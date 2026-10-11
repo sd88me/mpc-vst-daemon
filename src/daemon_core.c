@@ -1,77 +1,12 @@
 #include "daemon_core.h"
+#include "daemon_json.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ---- a small JSON reader: just enough for the reply ---- */
-typedef struct jv { char t; double num; char *str; struct jv *kid, *next; char *key; } jv;   /* t: o a s n b 0 */
-typedef struct { const char *p, *end; int depth; } jp;
-
-static void jfree(jv *v) { while (v) { jv *n = v->next; jfree(v->kid); free(v->str); free(v->key); free(v); v = n; } }
-static void ws(jp *j) { while (j->p < j->end && (*j->p == ' ' || *j->p == '\n' || *j->p == '\t' || *j->p == '\r')) j->p++; }
-static jv *jparse(jp *j);
-
-static char *jstring(jp *j) {      /* at the opening quote */
-    j->p++;
-    size_t cap = 16, n = 0; char *s = malloc(cap);
-    while (j->p < j->end && *j->p != '"') {
-        char c = *j->p++;
-        if (c == '\\' && j->p < j->end) {
-            c = *j->p++;
-            if (c == 'n') c = '\n'; else if (c == 't') c = ' ';
-            else if (c == 'u') { j->p += (j->end - j->p >= 4) ? 4 : (j->end - j->p); c = '?'; }
-        }
-        if (n + 2 > cap) s = realloc(s, cap *= 2);
-        s[n++] = c;
-    }
-    if (j->p >= j->end) { free(s); return NULL; }
-    j->p++; s[n] = 0; return s;
-}
-
-static jv *jparse(jp *j) {
-    ws(j);
-    if (j->p >= j->end || j->depth > 16) return NULL;
-    jv *v = calloc(1, sizeof *v);
-    char c = *j->p;
-    if (c == '"') { v->t = 's'; v->str = jstring(j); if (!v->str) { free(v); return NULL; } return v; }
-    if (c == '{' || c == '[') {
-        char close = c == '{' ? '}' : ']'; v->t = c == '{' ? 'o' : 'a'; j->p++; j->depth++;
-        jv **tail = &v->kid;
-        for (;;) {
-            ws(j);
-            if (j->p >= j->end) goto bad;
-            if (*j->p == close) { j->p++; break; }
-            char *key = NULL;
-            if (v->t == 'o') {
-                if (*j->p != '"') goto bad;
-                key = jstring(j); if (!key) goto bad;
-                ws(j); if (j->p >= j->end || *j->p != ':') { free(key); goto bad; } j->p++;
-            }
-            jv *k = jparse(j);
-            if (!k) { free(key); goto bad; }
-            k->key = key; *tail = k; tail = &k->next;
-            ws(j);
-            if (j->p < j->end && *j->p == ',') j->p++;
-        }
-        j->depth--; return v;
-    bad: jfree(v); return NULL;
-    }
-    if (!strncmp(j->p, "true", 4) || !strncmp(j->p, "false", 5)) { v->t = 'b'; j->p += (*j->p == 't') ? 4 : 5; return v; }
-    if (!strncmp(j->p, "null", 4)) { v->t = '0'; j->p += 4; return v; }
-    char *e; v->num = strtod(j->p, &e);
-    if (e == j->p) { free(v); return NULL; }
-    v->t = 'n'; j->p = e; return v;
-}
-
-static jv *jget(jv *o, const char *key) {
-    if (!o || o->t != 'o') return NULL;
-    for (jv *k = o->kid; k; k = k->next) if (k->key && !strcmp(k->key, key)) return k;
-    return NULL;
-}
-static double jnum(jv *o, const char *key, double def) { jv *k = jget(o, key); return k && k->t == 'n' ? k->num : def; }
 static void jcopy(jv *o, const char *key, char *dst, size_t cap) {
-    jv *k = jget(o, key); dst[0] = 0;
+    jv *k = djson_get(o, key); dst[0] = 0;
     if (k && k->t == 's') { strncpy(dst, k->str, cap - 1); dst[cap - 1] = 0; }
 }
 
@@ -79,21 +14,20 @@ int daemon_parse_reply(const char *text, float max_beats, dpart_t *out) {
     memset(out, 0, sizeof *out);
     const char *a = strchr(text, '{'), *b = strrchr(text, '}');     /* tolerate ```json fences and chatter */
     if (!a || !b || b < a) return -1;
-    jp j = { a, b + 1, 0 };
-    jv *root = jparse(&j);
-    if (!root || root->t != 'o') { jfree(root); return -1; }
-    jv *notes = jget(root, "notes");
-    if (!notes || notes->t != 'a') { jfree(root); return -1; }
+    jv *root = djson_parse(a, (size_t)(b + 1 - a));
+    if (!root || root->t != 'o') { djson_free(root); return -1; }
+    jv *notes = djson_get(root, "notes");
+    if (!notes || notes->t != 'a') { djson_free(root); return -1; }
     jcopy(root, "transcript", out->transcript, sizeof out->transcript);
-    jv *fb = jget(root, "feedback");
+    jv *fb = djson_get(root, "feedback");
     jcopy(fb, "result", out->feedback, sizeof out->feedback);
     jcopy(fb, "clip_name", out->clip_name, sizeof out->clip_name);
     for (char *c = out->clip_name; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_')) *c = '_';
     if (!out->clip_name[0]) strcpy(out->clip_name, "daemon");
     double end = 0;
     for (jv *k = notes->kid; k && out->n < DAEMON_MAX_NOTES; k = k->next) {
-        double p = jnum(k, "pitch", -1), s = jnum(k, "start_time", -1), d = jnum(k, "duration", 0), v = jnum(k, "velocity", 100);
-        if (jnum(k, "mute", 0) != 0) continue;
+        double p = djson_num(k, "pitch", -1), s = djson_num(k, "start_time", -1), d = djson_num(k, "duration", 0), v = djson_num(k, "velocity", 100);
+        if (djson_num(k, "mute", 0) != 0) continue;
         if (p < 0 || p > 127 || s < 0 || d <= 0 || s >= max_beats) continue;
         if (s + d > max_beats) d = max_beats - s;
         if (d < 0.01) continue;
@@ -103,7 +37,7 @@ int daemon_parse_reply(const char *text, float max_beats, dpart_t *out) {
         n->pitch = (uint8_t)p; n->vel = (uint8_t)v; n->start = (float)s; n->dur = (float)d;
         if (s + d > end) end = s + d;
     }
-    jfree(root);
+    djson_free(root);
     out->loop_beats = (float)ceil(end > 1 ? end : 1);
     return out->n;
 }
@@ -242,26 +176,25 @@ int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav
 /* ---- Gemini envelope ---- */
 int daemon_extract_text(const char *resp, char *out, size_t cap) {
     if (cap) out[0] = 0;
-    jp j = { resp, resp + strlen(resp), 0 };
-    jv *root = jparse(&j);
+    jv *root = djson_parse(resp, strlen(resp));
     int r = -1;
     if (root && root->t == 'o') {
-        jv *cands = jget(root, "candidates");
+        jv *cands = djson_get(root, "candidates");
         jv *c0 = cands && cands->t == 'a' ? cands->kid : NULL;
-        jv *parts = jget(jget(c0, "content"), "parts");
+        jv *parts = djson_get(djson_get(c0, "content"), "parts");
         size_t n = 0;
         if (parts && parts->t == 'a')
             for (jv *p = parts->kid; p; p = p->next) {
-                jv *t = jget(p, "text");
+                jv *t = djson_get(p, "text");
                 if (t && t->t == 's') { size_t l = strlen(t->str); if (n + l + 1 > cap) l = cap - n - 1; memcpy(out + n, t->str, l); n += l; out[n] = 0; }
             }
         if (n) r = (int)n;
         else {
-            jv *m = jget(jget(root, "error"), "message");
+            jv *m = djson_get(djson_get(root, "error"), "message");
             snprintf(out, cap, "%s", m && m->t == 's' ? m->str : "no text in reply");
         }
     } else snprintf(out, cap, "reply is not JSON");
-    jfree(root);
+    djson_free(root);
     return r;
 }
 

@@ -75,7 +75,7 @@ int main(void) {
     send_key(fd, KEY_ESC, 1); wait_for(&cancels, 1);
     CHECK(cancels == 1 && submits == 1, "esc cancels (%d), no submit", cancels);
     close(fd);
-    kbd_arm(k, 1); fd = open(path, O_WRONLY | O_NONBLOCK); for (int i = 0; fd < 0 && i < 300; i++) { usleep(10000); fd = open(path, O_WRONLY | O_NONBLOCK); }
+    nfound = -1; kbd_arm(k, 1); fd = open(path, O_WRONLY | O_NONBLOCK); for (int i = 0; fd < 0 && i < 300; i++) { usleep(10000); fd = open(path, O_WRONLY | O_NONBLOCK); }
     wait_for(&nfound, 1); close(fd);                     /* the writer goes away: the reader drops the device */
     wait_for(&nfound, 0); CHECK(nfound == 0, "keyboard gone -> %d", nfound);
     kbd_arm(k, 0); kbd_stop(k);

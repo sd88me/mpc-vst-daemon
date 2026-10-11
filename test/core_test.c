@@ -1,4 +1,5 @@
 #include "../src/daemon_core.h"
+#include "../src/daemon_json.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,6 +113,24 @@ int main(void) {
     CHECK(daemon_cap_wav(&cap, wavb, 40) == -1, "wav into a small buffer");
     daemon_cap_reset(&cap); for (int k = 0; k < 8000; k++) { int16_t z[256] = {0}; daemon_cap_push(&cap, z, 128); }
     CHECK(cap.n == DAEMON_CAP_MAX, "capture caps at %d (got %d)", DAEMON_CAP_MAX, cap.n);
+
+    /* JSON module: parse, access, write, round trip, rejects */
+    {
+        const char *src = "{\"a\":[1,2.5,-3e2,true,null,\"x\\ny\\\"q\\\"\"],\"o\":{\"k\":\"v\",\"n\":7}}";
+        jv *v = djson_parse(src, strlen(src));
+        CHECK(v && djson_len(djson_get(v, "a")) == 6 && djson_num(djson_get(v, "o"), "n", 0) == 7 && !strcmp(djson_str(djson_get(v, "o"), "k", ""), "v"), "json access");
+        CHECK(!strcmp(djson_at(djson_get(v, "a"), 5)->str, "x\ny\"q\"") && djson_at(djson_get(v, "a"), 6) == NULL, "json string escapes");
+        char out[256]; int n = djson_write(v, out, sizeof out);
+        CHECK(n > 0 && !strcmp(out, "{\"a\":[1,2.5,-300,true,null,\"x\\ny\\\"q\\\"\"],\"o\":{\"k\":\"v\",\"n\":7}}"), "json write '%s'", out);
+        { char tiny[10]; CHECK(djson_write(v, tiny, sizeof tiny) == -1, "json write into a small buffer"); }
+        jv *w = djson_parse(out, strlen(out)); char out2[256]; djson_write(w, out2, sizeof out2);
+        CHECK(!strcmp(out, out2), "json round trip");
+        djson_free(w); djson_free(v);
+        const char *bad[] = { "", "{", "{\"a\":}", "[1,2", "{\"a\":1} x", "\"unterminated", "nul" };
+        for (int i = 0; i < 7; i++) { jv *b = djson_parse(bad[i], strlen(bad[i])); CHECK(b == NULL, "rejects '%s'", bad[i]); djson_free(b); }
+        char ctl[] = "{\"s\":\"a\\u0001b\"}"; jv *c = djson_parse(ctl, strlen(ctl)); char o3[64]; djson_write(c, o3, sizeof o3);
+        CHECK(c != NULL, "control escape parses"); djson_free(c);
+    }
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }
