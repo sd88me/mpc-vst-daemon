@@ -30,7 +30,7 @@
  "defines": {
   "HAS_SONG_POS": 1,
   "HAS_DISPLAY_REV": 1,
-  "PARAM_TEXT_MAX": 400,
+  "PARAM_TEXT_MAX": 128,
   "MODULE_SUBDIR": "\"engine\""
  },
  "layout": "layout.conf",

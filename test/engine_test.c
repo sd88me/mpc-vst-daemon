@@ -212,6 +212,18 @@ int main(void) {
         fake.nq = 0;
     }
 
+    /* long readouts are cut to 127 characters with "..." */
+    {
+        void *lg = E->create(dir); char longq[400]; memset(longq, 'a', sizeof longq - 1); longq[sizeof longq - 1] = 0;
+        fake.code = 200; snprintf(fake.resp, sizeof fake.resp, "%s", OK_REPLY);
+        E->set_param(lg, "prompt", longq); wait_not_thinking(lg);
+        char *tr = get(lg, "transcript"); (void)tr;
+        CHECK(strlen(get(lg, "status")) <= 127 && strlen(get(lg, "transcript")) <= 127, "readouts stay within 127 characters");
+        char buf[600]; E->get_param(lg, "transcript", buf, sizeof buf); 
+        CHECK(strlen(buf) <= 127, "transcript length %zu", strlen(buf));
+        E->destroy(lg);
+    }
+
     /* the project chunk round-trips the settings */
     E->set_param(a, "type", "Beats"); E->set_param(a, "key", "D#"); E->set_param(a, "scale", "Blues"); E->set_param(a, "bars", "7"); E->set_param(a, "channel", "10");
     char st[64]; snprintf(st, sizeof st, "%s", get(a, "state"));
@@ -243,7 +255,7 @@ int main(void) {
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
     E->destroy(a);
-    CHECK(fake.closed == 7, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 8, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

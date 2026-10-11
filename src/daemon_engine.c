@@ -288,6 +288,14 @@ static void destroy(void *inst) {
 
 static void midi_in(void *inst, const uint8_t *m, int n) { (void)inst; (void)m; (void)n; }
 
+/* readout text: at most 127 characters (PARAM_TEXT_MAX 128, the longest verified on a device), cut with "..." */
+static int put_text(char *b, int n, const char *s) {
+    int cap = n < 128 ? n : 128, l = (int)strlen(s);
+    if (l < cap) return snprintf(b, (size_t)n, "%s", s);
+    if (cap < 5) return snprintf(b, (size_t)n, "%.*s", cap - 1, s);
+    return snprintf(b, (size_t)n, "%.*s...", cap - 4, s);
+}
+
 static int opt_index(const char **list, int n, const char *v) {
     char *e; long i = strtol(v, &e, 10);
     if (e != v && *e == 0) return (int)(i < 0 ? 0 : i >= n ? n - 1 : i);
@@ -355,9 +363,9 @@ static void set_param(void *inst, const char *k, const char *v) {
 static int get_param(void *inst, const char *k, char *b, int n) {
     dm_t *d = inst; int r = 0;
     pthread_mutex_lock(&d->mu);
-    if (!strcmp(k, "status")) r = snprintf(b, n, "%s", d->status);
-    else if (!strcmp(k, "transcript")) r = snprintf(b, n, "%s", d->transcript[0] ? d->transcript : "-");
-    else if (!strcmp(k, "reply")) r = snprintf(b, n, "%s", d->reply[0] ? d->reply : "-");
+    if (!strcmp(k, "status")) r = put_text(b, n, d->status);
+    else if (!strcmp(k, "transcript")) r = put_text(b, n, d->transcript[0] ? d->transcript : "-");
+    else if (!strcmp(k, "reply")) r = put_text(b, n, d->reply[0] ? d->reply : "-");
     else if (!strcmp(k, "display_rev")) r = snprintf(b, n, "%d", d->rev);
     else if (!strcmp(k, "type")) r = snprintf(b, n, "%s", TYPES[d->type]);
     else if (!strcmp(k, "key")) r = snprintf(b, n, "%s", KEYS[d->keyi]);
@@ -365,7 +373,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "bars")) r = snprintf(b, n, "%d", d->bars);
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
-    else if (!strcmp(k, "plan")) r = snprintf(b, n, "%s", d->steps[0] ? d->steps : "-");
+    else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
         r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE || d->state == S_PLAN ? 3 : d->state == S_TYPING ? 5 : 4]); }
