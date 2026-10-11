@@ -27,5 +27,6 @@
   "PARAM_TEXT_MAX": 160,
   "MODULE_SUBDIR": "\"engine\""
  },
- "layout": "layout.conf"
+ "layout": "layout.conf",
+ "art": "html"
 }

@@ -187,6 +187,8 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "bars")) r = snprintf(b, n, "%d", d->bars);
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
+    else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error" };   /* the skin's picture per state */
+        r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE ? 3 : 4]); }
     else if (!strcmp(k, "state")) r = snprintf(b, n, "%d,%d,%d,%d,%d,%d", d->type, d->keyi, d->scale, d->bars, d->channel, d->play);
     pthread_mutex_unlock(&d->mu);
     return r;

@@ -42,7 +42,10 @@ int main(void) {
     char path[300]; snprintf(path, sizeof path, "%s/daemon.conf", dir);
     FILE *f = fopen(path, "w"); fputs("api_key=KEY123\nmodel=test-model\nurl_base=http://x/models\n", f); fclose(f);
     a = E->create(dir);
-    CHECK(!strcmp(get(a, "status"), "READY"), "start state '%s'", get(a, "status"));
+    CHECK(!strcmp(get(a, "status"), "READY") && !strcmp(get(a, "face"), "Idle"), "start state '%s' face '%s'", get(a, "status"), get(a, "face"));
+    E->set_param(a, "talk", "1"); CHECK(!strcmp(get(a, "face"), "Listening"), "face while listening '%s'", get(a, "face"));
+    { int16_t z[256] = {0}, o[256]; for (int i = 0; i < 100; i++) E->process(a, z, o, 128); }
+    E->set_param(a, "talk", "1"); CHECK(!strcmp(get(a, "face"), "Error"), "face after a silent take '%s'", get(a, "face"));
 
     /* silence: caught before it costs a request */
     speak(a, 0);
@@ -54,7 +57,7 @@ int main(void) {
     E->set_param(a, "type", "Melody"); E->set_param(a, "key", "A"); E->set_param(a, "scale", "Dorian"); E->set_param(a, "bars", "2");
     E->song_pos(a, 0, 100, 0, 128);
     speak(a, 1); wait_not_thinking(a);
-    CHECK(!strcmp(get(a, "status"), "DONE 3 NOTES"), "after reply: '%s'", get(a, "status"));
+    CHECK(!strcmp(get(a, "status"), "DONE 3 NOTES") && !strcmp(get(a, "face"), "Done"), "after reply: '%s' face '%s'", get(a, "status"), get(a, "face"));
     CHECK(!strcmp(fake.url, "http://x/models/test-model:generateContent") && !strcmp(fake.key, "KEY123"), "url '%s' key '%s'", fake.url, fake.key);
     CHECK(strstr(fake.body, "audio/wav") && strstr(fake.body, "A Dorian") && strstr(fake.body, "Length: 8 beats") && strstr(fake.body, "Part type: Melody"), "request body: %.200s", fake.body);
     CHECK(strstr(fake.body, "Tempo 100 BPM"), "tempo from the host not in the request");

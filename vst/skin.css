@@ -1,0 +1,11 @@
+/* Daemon look: a phosphor terminal. Baked text is Liberation Mono (open licence, in the renderer image); MPC draws the live
+ * text itself in Titillium Web / Roboto, so it does not follow this font. Buttons are flat outlines, like a CLI prompt. */
+:root { --font: "Liberation Mono", "DejaVu Sans Mono", monospace; --title-font: var(--font); --sheen: 0; --radius: 2px;
+        --shadow: drop-shadow(0 0 4px rgba(255, 176, 42, .55)); }
+text { font-weight: 700; letter-spacing: .06em; }
+.frame-border { stroke: var(--line); stroke-width: 2; filter: drop-shadow(0 0 3px rgba(255, 176, 42, .35)); }
+.frame-title { fill: var(--ink); }
+.button-bg { fill: transparent; stroke: var(--ink); stroke-width: 2; rx: 2; filter: drop-shadow(0 0 4px rgba(255, 176, 42, .5)); }
+.button-sheen { opacity: 0; }
+.button-tx { fill: var(--ink); font-weight: 700; }
+.knob-pointer { stroke: var(--accent); }
