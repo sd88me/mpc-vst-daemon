@@ -222,12 +222,12 @@ int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav
               "feedback.result: one or two plain sentences on what you made, and, if the request named an artist, track or genre you do not know well, say so and what you assumed. "
               "feedback.clip_name: at most 12 characters, letters, digits and underscores.\n");
     snprintf(num, sizeof num, "Tempo %.0f BPM. ", rq->bpm); sjson(&s, num);
-    if (drums) sjson(&s, "Use General MIDI drum notes (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap, 49 crash).");
-    else { sjson(&s, "Keep every note in the scale: "); sjson(&s, rq->scale); sjson(&s, "."); }
+    sjson(&s, "For drums and beats use General MIDI drum notes (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap, 49 crash) and ignore the scale. ");
+    if (!drums) { sjson(&s, "Keep every note in the scale: "); sjson(&s, rq->scale); sjson(&s, ", unless the request names another key or scale."); }
     sstr(&s, "\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[");
     if (wav16) { sstr(&s, "{\"inline_data\":{\"mime_type\":\"audio/wav\",\"data\":\""); sb64(&s, wav16, wav_len); sstr(&s, "\"}},"); }
     sstr(&s, "{\"text\":\"");
-    snprintf(num, sizeof num, "Part type: "); sjson(&s, num); sjson(&s, rq->type);
+    sjson(&s, "Menu defaults (what the request says wins over them): Part type: "); sjson(&s, rq->type);
     snprintf(num, sizeof num, ". Length: %d beats. ", rq->bars * 4); sjson(&s, num);
     if (typed && typed[0]) { sjson(&s, "Request: "); sjson(&s, typed); }
     else sjson(&s, "The request is in the audio.");
@@ -237,4 +237,65 @@ int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav
              "\"required\":[\"pitch\",\"start_time\",\"duration\",\"velocity\"]}},\"feedback\":{\"type\":\"OBJECT\",\"properties\":{"
              "\"result\":{\"type\":\"STRING\"},\"clip_name\":{\"type\":\"STRING\"}}}},\"required\":[\"transcript\",\"notes\",\"feedback\"]}}}");
     return s.bad ? -1 : (int)s.n;
+}
+
+/* ---- Gemini envelope ---- */
+int daemon_extract_text(const char *resp, char *out, size_t cap) {
+    if (cap) out[0] = 0;
+    jp j = { resp, resp + strlen(resp), 0 };
+    jv *root = jparse(&j);
+    int r = -1;
+    if (root && root->t == 'o') {
+        jv *cands = jget(root, "candidates");
+        jv *c0 = cands && cands->t == 'a' ? cands->kid : NULL;
+        jv *parts = jget(jget(c0, "content"), "parts");
+        size_t n = 0;
+        if (parts && parts->t == 'a')
+            for (jv *p = parts->kid; p; p = p->next) {
+                jv *t = jget(p, "text");
+                if (t && t->t == 's') { size_t l = strlen(t->str); if (n + l + 1 > cap) l = cap - n - 1; memcpy(out + n, t->str, l); n += l; out[n] = 0; }
+            }
+        if (n) r = (int)n;
+        else {
+            jv *m = jget(jget(root, "error"), "message");
+            snprintf(out, cap, "%s", m && m->t == 's' ? m->str : "no text in reply");
+        }
+    } else snprintf(out, cap, "reply is not JSON");
+    jfree(root);
+    return r;
+}
+
+/* ---- capture ---- */
+void daemon_cap_reset(dcap_t *c) { c->n = 0; c->phase = 0; c->prev = 0; }
+
+void daemon_cap_push(dcap_t *c, const int16_t *in_lr, int frames) {
+    const double step = 44100.0 / 16000.0;       /* input samples per output sample */
+    for (int i = 0; i < frames && c->n < DAEMON_CAP_MAX; i++) {
+        int16_t cur = (int16_t)(((int)in_lr[2 * i] + (int)in_lr[2 * i + 1]) / 2);
+        while (c->phase < 1.0 && c->n < DAEMON_CAP_MAX) {   /* output samples falling between prev and cur */
+            c->pcm[c->n++] = (int16_t)lround(c->prev + (cur - c->prev) * c->phase);
+            c->phase += step;
+        }
+        c->phase -= 1.0;
+        c->prev = cur;
+    }
+}
+
+int daemon_cap_peak(const dcap_t *c) {
+    int pk = 0;
+    for (int i = 0; i < c->n; i++) { int v = abs(c->pcm[i]); if (v > pk) pk = v; }
+    return pk > 32767 ? 32767 : pk;
+}
+
+int daemon_cap_wav(const dcap_t *c, uint8_t *out, size_t cap) {
+    size_t data = (size_t)c->n * 2;
+    if (cap < 44 + data) return -1;
+    uint32_t riff = (uint32_t)(36 + data), rate = 16000, brate = 32000;
+    memcpy(out, "RIFF", 4); memcpy(out + 4, &riff, 4); memcpy(out + 8, "WAVEfmt ", 8);
+    uint32_t fmt = 16; uint16_t pcm = 1, ch = 1, align = 2, bits = 16; uint32_t dl = (uint32_t)data;
+    memcpy(out + 16, &fmt, 4); memcpy(out + 20, &pcm, 2); memcpy(out + 22, &ch, 2); memcpy(out + 24, &rate, 4);
+    memcpy(out + 28, &brate, 4); memcpy(out + 32, &align, 2); memcpy(out + 34, &bits, 2);
+    memcpy(out + 36, "data", 4); memcpy(out + 40, &dl, 4);
+    memcpy(out + 44, c->pcm, data);              /* the device is little-endian (armv7, aarch64) as is x86 */
+    return (int)(44 + data);
 }

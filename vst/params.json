@@ -1,0 +1,16 @@
+{
+ "params": [
+  { "key": "talk", "name": "Talk", "momentary": true },
+  { "key": "type", "name": "Type", "options": ["Monophony", "Melody", "Chords", "Melody+Chords", "Beats"], "default": "Chords" },
+  { "key": "key", "name": "Key", "options": ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"], "default": "F" },
+  { "key": "scale", "name": "Scale", "options": ["Major", "Minor", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Locrian", "Harmonic Minor", "Minor Pentatonic", "Blues"], "default": "Minor" },
+  { "key": "bars", "name": "Bars", "min": 1, "max": 8, "default": 4, "display": "int" },
+  { "key": "regen", "name": "Regen", "momentary": true },
+  { "key": "play", "name": "Play", "options": ["Stop", "Play"], "default": "Play" },
+  { "key": "save", "name": "Save .mid", "momentary": true },
+  { "key": "channel", "name": "Channel", "min": 1, "max": 16, "default": 2, "display": "int" },
+  { "key": "status", "name": "Status", "display": "string", "poll": false },
+  { "key": "transcript", "name": "Prompt", "display": "string", "poll": false },
+  { "key": "reply", "name": "Daemon", "display": "string", "poll": false }
+ ]
+}

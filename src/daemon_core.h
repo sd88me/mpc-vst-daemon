@@ -43,3 +43,17 @@ int daemon_write_smf(const dpart_t *part, int channel, double bpm, uint8_t *buf,
  * Returns bytes written (NUL-terminated) or -1. */
 typedef struct { const char *type, *scale, *drums; double bpm; int bars; } dreq_t;
 int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav16, size_t wav_len, char *buf, size_t cap);
+
+/* Gemini envelope: candidates[0].content.parts[*].text joined into out. Returns the length, or -1 with the API's own
+ * error.message (or "no text in reply") in out. */
+int daemon_extract_text(const char *resp, char *out, size_t cap);
+
+/* Mic capture: 44.1 kHz interleaved int16 stereo in, 16 kHz mono out (linear interpolation of the downmix). */
+#define DAEMON_CAP_SECONDS 20
+#define DAEMON_CAP_MAX (16000 * DAEMON_CAP_SECONDS)
+typedef struct { int16_t pcm[DAEMON_CAP_MAX]; int n; double phase; int16_t prev; } dcap_t;
+void daemon_cap_reset(dcap_t *c);
+void daemon_cap_push(dcap_t *c, const int16_t *in_lr, int frames);   /* stops growing at DAEMON_CAP_MAX */
+int daemon_cap_peak(const dcap_t *c);                                /* 0..32767 over the whole capture */
+/* A 16 kHz mono 16-bit WAV file of the capture; returns bytes (44 + 2n), or -1 if cap is too small. */
+int daemon_cap_wav(const dcap_t *c, uint8_t *out, size_t cap);

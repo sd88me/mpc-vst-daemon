@@ -84,7 +84,34 @@ int main(void) {
     f = fopen("/tmp/daemon_req.json", "w"); fputs(req, f); fclose(f);
     CHECK(daemon_build_request(&rq, "x", wav, sizeof wav, req, 400) == -1, "small request buffer must fail");
     rq.type = "Beats"; rl = daemon_build_request(&rq, NULL, NULL, 0, req, sizeof req);
-    CHECK(rl > 0 && strstr(req, "General MIDI drum") && !strstr(req, "in the scale"), "beats request");
+    CHECK(rl > 0 && strstr(req, "General MIDI drum notes"), "beats request");
+
+    /* Gemini envelope */
+    char txt[512];
+    const char *env = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"notes\\\":[]}\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}]}";
+    CHECK(daemon_extract_text(env, txt, sizeof txt) == 12 && !strcmp(txt, "{\"notes\":[]}"), "envelope text '%s'", txt);
+    CHECK(daemon_extract_text("{\"error\":{\"code\":404,\"message\":\"model gone\"}}", txt, sizeof txt) == -1 && !strcmp(txt, "model gone"), "api error '%s'", txt);
+    CHECK(daemon_extract_text("<html>", txt, sizeof txt) == -1, "not json");
+    CHECK(daemon_extract_text("{\"candidates\":[{\"finishReason\":\"SAFETY\"}]}", txt, sizeof txt) == -1 && !strcmp(txt, "no text in reply"), "blocked reply '%s'", txt);
+
+    /* capture: 1 s of 44.1 kHz stereo 440 Hz in 128-frame blocks -> about 16000 samples at 16 kHz, same pitch */
+    static dcap_t cap; daemon_cap_reset(&cap);
+    for (int blk = 0; blk < 44100 / 128; blk++) {
+        int16_t in[256];
+        for (int i = 0; i < 128; i++) { double t = (blk * 128 + i) / 44100.0; in[2 * i] = in[2 * i + 1] = (int16_t)(8000 * sin(6.283185307 * 440 * t)); }
+        daemon_cap_push(&cap, in, 128);
+    }
+    double secs = (44100 / 128) * 128 / 44100.0;
+    CHECK(abs(cap.n - (int)lround(secs * 16000)) <= 2, "capture length %d for %.4f s", cap.n, secs);
+    int zc = 0; for (int i = 1; i < cap.n; i++) if ((cap.pcm[i - 1] < 0) != (cap.pcm[i] < 0)) zc++;
+    CHECK(fabs(zc / 2.0 / secs - 440) < 4, "capture pitch %.1f Hz", zc / 2.0 / secs);
+    CHECK(daemon_cap_peak(&cap) > 7500 && daemon_cap_peak(&cap) < 8100, "capture peak %d", daemon_cap_peak(&cap));
+    static uint8_t wavb[DAEMON_CAP_MAX * 2 + 64];
+    int wl = daemon_cap_wav(&cap, wavb, sizeof wavb);
+    CHECK(wl == 44 + 2 * cap.n && !memcmp(wavb, "RIFF", 4) && !memcmp(wavb + 36, "data", 4), "wav %d", wl);
+    CHECK(daemon_cap_wav(&cap, wavb, 40) == -1, "wav into a small buffer");
+    daemon_cap_reset(&cap); for (int k = 0; k < 8000; k++) { int16_t z[256] = {0}; daemon_cap_push(&cap, z, 128); }
+    CHECK(cap.n == DAEMON_CAP_MAX, "capture caps at %d (got %d)", DAEMON_CAP_MAX, cap.n);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }
