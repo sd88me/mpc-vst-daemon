@@ -8,14 +8,24 @@
  "effect": true,
  "build": {
   "root": "..",
-  "sources": ["src/daemon_engine.c", "src/daemon_core.c", "src/io_device.c"],
-  "cflags": ["-Isrc"],
-  "libs": ["-lm", "-ldl"]
+  "sources": [
+   "src/daemon_engine.c",
+   "src/daemon_core.c",
+   "src/io_device.c"
+  ],
+  "cflags": [
+   "-Isrc"
+  ],
+  "libs": [
+   "-lm",
+   "-ldl"
+  ]
  },
  "defines": {
   "HAS_SONG_POS": 1,
   "HAS_DISPLAY_REV": 1,
   "PARAM_TEXT_MAX": 160,
   "MODULE_SUBDIR": "\"engine\""
- }
+ },
+ "layout": "layout.conf"
 }
