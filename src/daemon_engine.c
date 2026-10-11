@@ -6,13 +6,15 @@
 #include "daemon_core.h"
 #include "daemon_io.h"
 #include "daemon_kbd.h"
+#include "daemon_agent.h"
+#include "daemon_json.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
-enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR, S_TYPING };
+enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR, S_TYPING, S_PLAN };
 static const char *TYPES[] = { "Monophony", "Melody", "Chords", "Melody+Chords", "Beats" };
 static const char *KEYS[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 static const char *SCALES[] = { "Major", "Minor", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Locrian", "Harmonic Minor", "Minor Pentatonic", "Blues" };
@@ -31,6 +33,8 @@ typedef struct {
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
     kbd_t *kbd; int kbd_devs;
+    int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
+    aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
 } dm_t;
 
 static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
@@ -40,7 +44,7 @@ static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
 static void conf_load(dm_t *d) {
     snprintf(d->model, sizeof d->model, "gemini-3.8-flash");
     snprintf(d->url_base, sizeof d->url_base, "https://generativelanguage.googleapis.com/v1beta/models");
-    snprintf(d->input_dir, sizeof d->input_dir, "/dev/input");
+    snprintf(d->input_dir, sizeof d->input_dir, "/dev/input"); snprintf(d->cmdr_host, sizeof d->cmdr_host, "127.0.0.1"); d->cmdr_port = 6730;
     char path[300]; snprintf(path, sizeof path, "%s/daemon.conf", d->dir);
     FILE *f = fopen(path, "r"); if (!f) return;
     char line[256];
@@ -51,9 +55,98 @@ static void conf_load(dm_t *d) {
         if (!strcmp(line, "api_key")) snprintf(d->key, sizeof d->key, "%s", v);
         else if (!strcmp(line, "model")) snprintf(d->model, sizeof d->model, "%s", v);
         else if (!strcmp(line, "input_dir")) { snprintf(d->input_dir, sizeof d->input_dir, "%s", v); d->input_test = 1; }   /* tests: a FIFO dir */
+        else if (!strcmp(line, "commander")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->cmdr_host, sizeof d->cmdr_host, "%s", h); d->cmdr_port = pt; } }
         else if (!strcmp(line, "url_base")) snprintf(d->url_base, sizeof d->url_base, "%s", v);   /* tests point this at a local server */
     }
     fclose(f);
+}
+
+
+/* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
+typedef struct { char typed[256]; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; } snap_t;
+
+static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
+    dm_t *d = u; dpart_t *np = malloc(sizeof *np);
+    int n = daemon_parse_reply(args, 32.0f, np);
+    if (n <= 0) { snprintf(res, cap, "no usable notes"); free(np); return -1; }
+    jv *a = djson_parse(args, strlen(args));
+    const char *name = a ? djson_str(a, "name", "") : ""; int ch = a ? (int)djson_num(a, "channel", 0) : 0;
+    if (name[0]) { snprintf(np->clip_name, sizeof np->clip_name, "%s", name); for (char *c = np->clip_name; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '_')) *c = '_'; }
+    pthread_mutex_lock(&d->mu);
+    memcpy(&d->part, np, sizeof *np); d->have_part = 1; d->part_gen++;
+    if (ch >= 1 && ch <= 16) d->channel = ch;
+    pthread_mutex_unlock(&d->mu);
+    snprintf(res, cap, "%d notes over %.0f beats on channel %d", n, np->loop_beats, ch >= 1 && ch <= 16 ? ch : d->channel);
+    djson_free(a); free(np); return 0;
+}
+
+static void publish_error(dm_t *d, const char *fmt, const char *a) { pthread_mutex_lock(&d->mu); set_status(d, S_ERROR, fmt, a); pthread_mutex_unlock(&d->mu); }
+
+static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
+    char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);     /* NULL: planning still works for parts; tools say why */
+    ahist_t h; agent_hist_init(&h);
+    char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
+    agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
+    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so." };
+    char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
+    int done = 0;
+    for (int round = 0; round < 6 && !done; round++) {
+        int bl = agent_build_request(&ctx, &h, body, 1400000);
+        if (bl < 0) { publish_error(d, "ERROR %s", "conversation too long"); done = 1; break; }
+        { char r[24]; snprintf(r, sizeof r, "%d", round + 1); pthread_mutex_lock(&d->mu); set_status(d, S_THINKING, "THINKING, STEP %s", r); pthread_mutex_unlock(&d->mu); }
+        int code = d->io->http_post(s->url, s->key, body, (size_t)bl, resp, 600000, 150);
+        if (code == 0) { char m[100]; snprintf(m, sizeof m, "no network: %.70s", resp); publish_error(d, "ERROR %s", m); done = 1; break; }
+        if (agent_parse_turn(resp, &t) < 0) { char m[100]; snprintf(m, sizeof m, "%d %.80s", code, t.text); publish_error(d, "ERROR %s", m); done = 1; break; }
+        if (t.n == 0) {                                                                   /* an answer, nothing to do */
+            pthread_mutex_lock(&d->mu); snprintf(d->reply, sizeof d->reply, "%.500s", t.text); d->steps[0] = 0; d->plan_ok = 0;
+            snprintf(d->transcript, sizeof d->transcript, "%s", s->typed[0] ? s->typed : "(voice)");
+            set_status(d, S_DONE, "DONE%s", ""); pthread_mutex_unlock(&d->mu); agent_turn_free(&t); done = 1; break;
+        }
+        int mut = 0; size_t used = 0;
+        for (int i = 0; i < t.n; i++) {
+            rs[i] = NULL;
+            if (agent_tool_is_read_only(t.calls[i].name)) {
+                rs[i] = tool_res + used; agent_exec(c, &t.calls[i], play_part_cb, d, rs[i], 200000 / AGENT_MAX_CALLS); used += strlen(rs[i]) + 1;
+            } else mut++;
+        }
+        if (!mut) { agent_hist_model(&h, &t); agent_hist_results(&h, &t, (const char *const *)rs); agent_turn_free(&t); continue; }
+        char steps[500] = "";
+        for (int i = 0, k = 0; i < t.n; i++) if (!agent_tool_is_read_only(t.calls[i].name)) {
+            char line[140]; agent_describe(c, &t.calls[i], line, sizeof line);
+            size_t l = strlen(steps); k++; snprintf(steps + l, sizeof steps - l, "%s%d %s", k > 1 ? "   " : "", k, line);
+        }
+        pthread_mutex_lock(&d->mu);
+        agent_turn_free(&d->plan); memcpy(&d->plan, &t, sizeof t); d->plan_ok = 1;      /* the plan owns the turn now */
+        snprintf(d->steps, sizeof d->steps, "%s", steps); snprintf(d->reply, sizeof d->reply, "%.500s", t.text);
+        snprintf(d->transcript, sizeof d->transcript, "%s", s->typed[0] ? s->typed : "(voice)");
+        char n[16]; snprintf(n, sizeof n, "%d", mut); set_status(d, S_PLAN, "PLAN %s STEPS: press RUN", n);
+        pthread_mutex_unlock(&d->mu);
+        done = 1;
+    }
+    if (!done) publish_error(d, "ERROR %s", "too many steps without a plan");
+    free(tool_res); agent_hist_free(&h); cmdr_close(c);
+}
+
+static void agent_run(dm_t *d, const snap_t *s) {
+    pthread_mutex_lock(&d->mu);
+    if (!d->plan_ok) { pthread_mutex_unlock(&d->mu); return; }
+    aturn_t plan = d->plan; plan.raw = NULL;                     /* a copy of the calls; the plan keeps the raw turn */
+    pthread_mutex_unlock(&d->mu);
+    char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);
+    char *res = malloc(8000); int ok = 0, total = 0; char first_err[100] = "";
+    for (int i = 0; i < plan.n; i++) {
+        if (agent_tool_is_read_only(plan.calls[i].name)) continue;
+        total++;
+        if (agent_exec(c, &plan.calls[i], play_part_cb, d, res, 8000) == 0) ok++;
+        else if (!first_err[0]) snprintf(first_err, sizeof first_err, "%.50s: %.40s", plan.calls[i].name, res);
+    }
+    free(res); cmdr_close(c);
+    pthread_mutex_lock(&d->mu);
+    d->plan_ok = 0; agent_turn_free(&d->plan);
+    char m[160];
+    if (ok == total) { snprintf(m, sizeof m, "%d", total); set_status(d, S_DONE, "RAN %s STEPS", m); }
+    else { snprintf(m, sizeof m, "RAN %d of %d: %s", ok, total, first_err); set_status(d, S_ERROR, "%s", m); }
+    pthread_mutex_unlock(&d->mu);
 }
 
 static void *worker(void *arg) {
@@ -65,7 +158,7 @@ static void *worker(void *arg) {
     for (;;) {
         while (!d->pending && !d->quit) pthread_cond_wait(&d->cv, &d->mu);
         if (d->quit) break;
-        d->pending = 0;
+        d->pending = 0; int mode = d->mode;
         dreq_t rq = { TYPES[d->type], "", "gm", d->bpm > 0 ? d->bpm : 120, d->bars };
         char scale[48]; snprintf(scale, sizeof scale, "%s %s", KEYS[d->keyi], SCALES[d->scale]); rq.scale = scale;
         char typed[256]; snprintf(typed, sizeof typed, "%s", d->typed);
@@ -75,6 +168,14 @@ static void *worker(void *arg) {
         snprintf(url, sizeof url, "%s/%s:generateContent", d->url_base, d->model);
         pthread_mutex_unlock(&d->mu);
 
+        if (mode == 2 || mode == 3) {
+            snap_t sn; memset(&sn, 0, sizeof sn);
+            snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
+            snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port;
+            if (mode == 2) agent_plan(d, &sn, body, resp); else agent_run(d, &sn);
+            pthread_mutex_lock(&d->mu);
+            continue;
+        }
         int code = 0, bl = daemon_build_request(&rq, typed, audio ? wav : NULL, audio ? (size_t)wl : 0, body, 1400000);
         if (bl > 0) code = d->io->http_post(url, key, body, (size_t)bl, resp, 600000, 60);
         int ok = 0; char err[96] = "";
@@ -89,7 +190,7 @@ static void *worker(void *arg) {
         if (ok) {
             memcpy(&d->part, np, sizeof *np); d->have_part = 1; d->part_gen++;
             snprintf(d->transcript, sizeof d->transcript, "%s", np->transcript[0] ? np->transcript : typed);
-            snprintf(d->reply, sizeof d->reply, "%s", np->feedback);
+            snprintf(d->reply, sizeof d->reply, "%.500s", np->feedback);
             char n[24]; snprintf(n, sizeof n, "%d", np->n); set_status(d, S_DONE, "DONE %s NOTES", n);
         } else set_status(d, S_ERROR, "ERROR %s", err);
     }
@@ -100,7 +201,7 @@ static void *worker(void *arg) {
 
 static void request(dm_t *d, int with_audio) {       /* d->mu held */
     if (!d->key[0]) { set_status(d, S_ERROR, "ERROR %s", "no api_key in daemon.conf"); return; }
-    d->with_audio = with_audio; d->pending = 1; set_status(d, S_THINKING, "THINKING%s", ""); pthread_cond_signal(&d->cv);
+    d->with_audio = with_audio; d->pending = 1; d->mode = d->agent ? 2 : 1; set_status(d, S_THINKING, "THINKING%s", ""); pthread_cond_signal(&d->cv);
 }
 
 /* keyboard callbacks run on the reader thread */
@@ -147,6 +248,7 @@ static void destroy(void *inst) {
     if (d->th_up) pthread_join(d->th, NULL);     /* a request in flight finishes first (60 s at most) */
     if (d->midi && d->pl.npend) { /* the host stopped sending blocks: end any sounding notes */ for (int i = 0; i < d->pl.npend; i++) d->io->midi_send(d->midi, d->channel - 1, 0, d->pl.pend[i].pitch, 0); }
     if (d->midi) d->io->midi_close(d->midi);
+    agent_turn_free(&d->plan);
     pthread_mutex_destroy(&d->mu); pthread_cond_destroy(&d->cv);
     free(d);
 }
@@ -187,6 +289,13 @@ static void set_param(void *inst, const char *k, const char *v) {
             d->transcript[0] = 0; set_status(d, S_TYPING, d->kbd_devs ? "TYPING: Enter sends, Esc cancels%s" : "TYPING: no keyboard yet, connect one%s", "");
             kbd_arm(d->kbd, 1);
         }
+    } else if (!strcmp(k, "run") && on) {
+        if (d->state == S_PLAN && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
+        else set_status(d, d->state == S_THINKING ? S_THINKING : S_ERROR, "%s", d->state == S_THINKING ? "THINKING" : "ERROR nothing to run: ask for something with AGENT on");
+    } else if (!strcmp(k, "agent")) {
+        d->agent = on || !strcmp(v, "On");
+        if (!d->agent && d->state == S_PLAN) { d->plan_ok = 0; agent_turn_free(&d->plan); d->steps[0] = 0; set_status(d, S_READY, "READY%s", ""); }
+        d->rev++;
     } else if (!strcmp(k, "regen") && on) {
         if (d->state != S_THINKING && d->state != S_LISTENING) {
             if (d->typed[0] || d->have_audio) request(d, d->typed[0] ? 0 : 1);
@@ -223,8 +332,10 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "bars")) r = snprintf(b, n, "%d", d->bars);
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
+    else if (!strcmp(k, "plan")) r = snprintf(b, n, "%s", d->steps[0] ? d->steps : "-");
+    else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
-        r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE ? 3 : d->state == S_TYPING ? 5 : 4]); }
+        r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE || d->state == S_PLAN ? 3 : d->state == S_TYPING ? 5 : 4]); }
     else if (!strcmp(k, "state")) r = snprintf(b, n, "%d,%d,%d,%d,%d,%d", d->type, d->keyi, d->scale, d->bars, d->channel, d->play);
     pthread_mutex_unlock(&d->mu);
     return r;

@@ -61,7 +61,7 @@ static const char *TOOLS =
  "{\"name\":\"set_param\",\"description\":\"Set one plugin parameter to a value between 0 and 1. The result reports the text MPC then shows, so a value can be corrected.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"},\"index\":{\"type\":\"INTEGER\"},\"value\":{\"type\":\"NUMBER\"}},\"required\":[\"id\",\"index\",\"value\"]}},"
  "{\"name\":\"transport\",\"description\":\"Press a transport button on the MPC.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"cmd\":{\"type\":\"STRING\",\"enum\":[\"play\",\"stop\",\"continue\",\"record\"]}},\"required\":[\"cmd\"]}},"
  "{\"name\":\"play_part\",\"description\":\"Make a MIDI part and loop it from Daemon's own MIDI port, in time with the MPC transport. Notes use beats from the start of the part.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{"
-   "\"name\":{\"type\":\"STRING\"},\"channel\":{\"type\":\"INTEGER\"},\"notes\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"OBJECT\",\"properties\":{\"pitch\":{\"type\":\"INTEGER\"},\"start_time\":{\"type\":\"NUMBER\"},\"duration\":{\"type\":\"NUMBER\"},\"velocity\":{\"type\":\"INTEGER\"}},\"required\":[\"pitch\",\"start_time\",\"duration\",\"velocity\"]}}},\"required\":[\"notes\"]}}"
+   "\"name\":{\"type\":\"STRING\"},\"channel\":{\"type\":\"INTEGER\"},\"notes\":{\"type\":\"ARRAY\",\"description\":\"each note is [pitch, start_time, duration, velocity]\",\"items\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"NUMBER\"}}}},\"required\":[\"notes\"]}}"
  "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
@@ -69,7 +69,7 @@ int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t c
     snprintf(sys, sizeof sys,
         "You help a musician run an Akai MPC by voice or text. You can read the project and plugins, set plugin parameters, press transport buttons and make MIDI parts, all through the tools. "
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
-        "Parts: positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
+        "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
         "You cannot load a plugin onto a track, rename or delete anything: say so briefly if asked, and do what you can. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
@@ -85,8 +85,9 @@ int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t c
         if (i) buf[n++] = ',';
         memcpy(buf + n, h->item[i], l); n += l;
     }
-    if (n + 3 >= cap) return -1;
-    buf[n++] = ']'; buf[n++] = '}'; buf[n] = 0;
+    static const char tail[] = "],\"generationConfig\":{\"thinkingConfig\":{\"thinkingLevel\":\"low\"}}}";
+    if (n + sizeof tail >= cap) return -1;
+    memcpy(buf + n, tail, sizeof tail); n += sizeof tail - 1;
     return (int)n;
 }
 

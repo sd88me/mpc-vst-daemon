@@ -123,6 +123,26 @@
    "key": "typing",
    "name": "Type",
    "momentary": true
+  },
+  {
+   "key": "agent",
+   "name": "Agent",
+   "options": [
+    "Off",
+    "On"
+   ],
+   "default": "Off"
+  },
+  {
+   "key": "run",
+   "name": "Run",
+   "momentary": true
+  },
+  {
+   "key": "plan",
+   "name": "Plan",
+   "display": "string",
+   "poll": false
   }
  ]
 }

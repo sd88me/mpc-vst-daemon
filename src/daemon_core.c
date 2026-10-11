@@ -27,6 +27,11 @@ int daemon_parse_reply(const char *text, float max_beats, dpart_t *out) {
     double end = 0;
     for (jv *k = notes->kid; k && out->n < DAEMON_MAX_NOTES; k = k->next) {
         double p = djson_num(k, "pitch", -1), s = djson_num(k, "start_time", -1), d = djson_num(k, "duration", 0), v = djson_num(k, "velocity", 100);
+        if (k->t == 'a') {                                     /* compact form [pitch, start, duration, velocity] */
+            jv *e0 = djson_at(k, 0), *e1 = djson_at(k, 1), *e2 = djson_at(k, 2), *e3 = djson_at(k, 3);
+            if (!e0 || !e1 || !e2 || e0->t != 'n' || e1->t != 'n' || e2->t != 'n') continue;
+            p = e0->num; s = e1->num; d = e2->num; v = e3 && e3->t == 'n' ? e3->num : 100;
+        }
         if (djson_num(k, "mute", 0) != 0) continue;
         if (p < 0 || p > 127 || s < 0 || d <= 0 || s >= max_beats) continue;
         if (s + d > max_beats) d = max_beats - s;
@@ -150,7 +155,7 @@ int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav
     int drums = rq->type && (strstr(rq->type, "Beat") || strstr(rq->type, "Drum"));
     sstr(&s, "{\"system_instruction\":{\"parts\":[{\"text\":\"");
     sjson(&s, "You write short musical parts for a hardware sampler. Reply only with the JSON object the schema describes.\n"
-              "Positions and lengths are in beats (1.0 = a quarter note, 0.25 = a sixteenth). Beat 0.0 is the first beat of the part.\n"
+              "Positions and lengths are in beats (1.0 = a quarter note, 0.25 = a sixteenth). Beat 0.0 is the first beat of the part. Each note is an array [pitch, start_time, duration, velocity].\n"
               "Pitches are MIDI note numbers 0-127, velocities 1-127. Keep the part inside the requested number of beats and make it loop cleanly.\n"
               "transcript: what the user asked for, in their words (for spoken audio, a verbatim transcription).\n"
               "feedback.result: one or two plain sentences on what you made, and, if the request named an artist, track or genre you do not know well, say so and what you assumed. "
@@ -165,10 +170,8 @@ int daemon_build_request(const dreq_t *rq, const char *typed, const uint8_t *wav
     snprintf(num, sizeof num, ". Length: %d beats. ", rq->bars * 4); sjson(&s, num);
     if (typed && typed[0]) { sjson(&s, "Request: "); sjson(&s, typed); }
     else sjson(&s, "The request is in the audio.");
-    sstr(&s, "\"}]}],\"generationConfig\":{\"responseMimeType\":\"application/json\",\"responseSchema\":{\"type\":\"OBJECT\","
-             "\"properties\":{\"transcript\":{\"type\":\"STRING\"},\"notes\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"OBJECT\",\"properties\":{"
-             "\"pitch\":{\"type\":\"INTEGER\"},\"start_time\":{\"type\":\"NUMBER\"},\"duration\":{\"type\":\"NUMBER\"},\"velocity\":{\"type\":\"INTEGER\"}},"
-             "\"required\":[\"pitch\",\"start_time\",\"duration\",\"velocity\"]}},\"feedback\":{\"type\":\"OBJECT\",\"properties\":{"
+    sstr(&s, "\"}]}],\"generationConfig\":{\"thinkingConfig\":{\"thinkingLevel\":\"low\"},\"responseMimeType\":\"application/json\",\"responseSchema\":{\"type\":\"OBJECT\","
+             "\"properties\":{\"transcript\":{\"type\":\"STRING\"},\"notes\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"NUMBER\"}}},\"feedback\":{\"type\":\"OBJECT\",\"properties\":{"
              "\"result\":{\"type\":\"STRING\"},\"clip_name\":{\"type\":\"STRING\"}}}},\"required\":[\"transcript\",\"notes\",\"feedback\"]}}}");
     return s.bad ? -1 : (int)s.n;
 }

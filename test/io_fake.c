@@ -14,7 +14,7 @@ static int hp(const char *url, const char *key, const char *body, size_t len, ch
     (void)t; fake.posts++;
     snprintf(fake.url, sizeof fake.url, "%s", url); snprintf(fake.key, sizeof fake.key, "%s", key);
     size_t n = len < sizeof fake.body - 1 ? len : sizeof fake.body - 1; memcpy(fake.body, body, n); fake.body[n] = 0;
-    snprintf(resp, cap, "%s", fake.resp);
+    if (fake.nq > 0 && fake.qi < fake.nq) snprintf(resp, cap, "%s", fake.queue[fake.qi++]); else snprintf(resp, cap, "%s", fake.resp);
     return fake.code;
 }
 static const daemon_io_t IO = { mo, ms, mc, hp };

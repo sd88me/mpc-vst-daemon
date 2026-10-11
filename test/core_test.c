@@ -87,6 +87,13 @@ int main(void) {
     rq.type = "Beats"; rl = daemon_build_request(&rq, NULL, NULL, 0, req, sizeof req);
     CHECK(rl > 0 && strstr(req, "General MIDI drum notes"), "beats request");
 
+    /* compact notes [pitch, start, duration, velocity], and mixed with objects */
+    {
+        static dpart_t cp;
+        int k = daemon_parse_reply("{\"notes\":[[60,0,1,100],[64,1,0.5],[300,0,1,90],[62,-1,1,90],[67,2],{\"pitch\":69,\"start_time\":3,\"duration\":1,\"velocity\":80},\"x\",[1]]}", 8, &cp);
+        CHECK(k == 3 && cp.notes[1].pitch == 64 && cp.notes[1].vel == 100 && cp.notes[2].pitch == 69, "compact notes: kept %d", k);
+    }
+
     /* Gemini envelope */
     char txt[512];
     const char *env = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"notes\\\":[]}\"}],\"role\":\"model\"},\"finishReason\":\"STOP\"}]}";

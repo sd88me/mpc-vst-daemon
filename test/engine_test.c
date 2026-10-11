@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <linux/input.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL %s:%d ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); fails++; } } while (0)
@@ -110,6 +111,48 @@ int main(void) {
         E->destroy(t);
     }
 
+    /* agent: plan first (read-only tools run, changes wait), RUN does them. The commander is a fake WebSocket server. */
+    {
+        int in[2], out[2]; if (pipe(in) || pipe(out)) return 1;
+        pid_t pid = fork();
+        if (!pid) { dup2(in[0], 0); dup2(out[1], 1); close(in[1]); close(out[0]); execlp("python3", "python3", "-I", "test/fake_commander.py", (char *)NULL); _exit(127); }
+        close(in[0]); close(out[1]);
+        FILE *so = fdopen(out[0], "r"); char pl[200]; if (!fgets(pl, sizeof pl, so)) { printf("fake commander did not start\n"); return 1; }
+        char cpath2[340]; snprintf(cpath2, sizeof cpath2, "%s/daemon.conf", dir);
+        FILE *cf = fopen(cpath2, "a"); fprintf(cf, "commander=127.0.0.1:%d\n", atoi(pl)); fclose(cf);
+        void *g = E->create(dir);
+        E->set_param(g, "agent", "On"); CHECK(!strcmp(get(g, "agent"), "On"), "agent on");
+        fake.nq = 2; fake.qi = 0; fake.code = 200;
+        snprintf(fake.queue[0], sizeof fake.queue[0], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"list_plugins\",\"args\":{}},\"thoughtSignature\":\"S1\"}]}}]}");
+        snprintf(fake.queue[1], sizeof fake.queue[1], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Heard: \\\"warm it up and add a bass\\\". Opening the filter and a bass line.\"},"
+            "{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":0,\"value\":0.35}}},"
+            "{\"functionCall\":{\"name\":\"play_part\",\"args\":{\"name\":\"fat bass\",\"channel\":4,\"notes\":[{\"pitch\":36,\"start_time\":0,\"duration\":0.5,\"velocity\":100},{\"pitch\":39,\"start_time\":1,\"duration\":0.5,\"velocity\":90}]}}}]}}]}");
+        int pp = fake.posts;
+        E->set_param(g, "prompt", "warm it up and add a bass"); wait_not_thinking(g);
+        CHECK(!strcmp(get(g, "status"), "PLAN 2 STEPS: press RUN"), "plan status '%s'", get(g, "status"));
+        CHECK(fake.posts == pp + 2, "two model rounds (%d)", fake.posts - pp);
+        CHECK(strstr(fake.body, "functionResponse") && strstr(fake.body, "Profit-8") && strstr(fake.body, "S1"), "second request carries the tool result and the echoed turn: %.150s", fake.body);
+        CHECK(strstr(get(g, "plan"), "1 set Profit-8 Cutoff to 35%") && strstr(get(g, "plan"), "2 make a part \"fat bass\" on channel 4, 2 notes"), "plan lines '%s'", get(g, "plan"));
+        CHECK(strstr(get(g, "reply"), "Opening the filter"), "reply '%s'", get(g, "reply"));
+        CHECK(!strcmp(get(g, "face"), "Done"), "plan face '%s'", get(g, "face"));
+        double q2 = 0; fake.nev = 0; for (int k = 0; k < 300; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
+        CHECK(fake.nev == 0, "nothing plays before RUN (%d events)", fake.nev);
+        E->set_param(g, "run", "1");
+        for (int i = 0; i < 400 && strncmp(get(g, "status"), "RAN", 3); i++) usleep(10000);
+        CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS"), "run status '%s'", get(g, "status"));
+        q2 = 0; fake.nev = 0; for (int k = 0; k < 600; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
+        int on4 = 0; for (int i = 0; i < fake.nev; i++) on4 += fake.ev[i].on && fake.ev[i].ch == 3;
+        CHECK(on4 >= 2, "the part plays on channel 4 after RUN (%d note-ons)", on4);
+        E->set_param(g, "run", "1");
+        CHECK(!strncmp(get(g, "status"), "ERROR nothing to run", 20), "RUN with no plan: '%s'", get(g, "status"));
+        E->destroy(g);
+        close(in[1]);
+        char logs[2048] = ""; while (fgets(pl, sizeof pl, so)) strncat(logs, pl, sizeof logs - strlen(logs) - 1);
+        CHECK(strstr(logs, "\"t\":\"set\",\"id\":5,\"i\":0,\"value\":0.35") != NULL, "the set reached the commander: %s", logs);
+        fclose(so); waitpid(pid, NULL, 0);
+        fake.nq = 0;
+    }
+
     /* the project chunk round-trips the settings */
     E->set_param(a, "type", "Beats"); E->set_param(a, "key", "D#"); E->set_param(a, "scale", "Blues"); E->set_param(a, "bars", "7"); E->set_param(a, "channel", "10");
     char st[64]; snprintf(st, sizeof st, "%s", get(a, "state"));
@@ -141,7 +184,7 @@ int main(void) {
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
     E->destroy(a);
-    CHECK(fake.closed == 4, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 5, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }
