@@ -23,7 +23,7 @@ Status (offline only; nothing has run on a device yet):
 - `vst/`: `vst.json`, `params.json`, `layout.conf`, `skin.css`, `art/make_face.py`. `tools/test_port.sh vst/vst.json` (from
   mpc-vst-plugins) passes; `tools/build_port.sh` builds the armhf `.so`.
 
-Setup on a device: `daemon.conf` next to the plugin's `engine/` folder with `api_key=...` (optional `model=`, `commander=127.0.0.1:6730`).
+Setup on a device: `engine/daemon.conf` inside the plugin folder (it survives upgrades) with `api_key=...` (optional `model=`, `commander=127.0.0.1:6730`).
 Agent mode needs the commander addin installed. Loading a plugin / choosing a track needs a `macros.json` recorded on the device and the remote addin (docs/MACROS.md); none is recorded yet.
 
 ## Licence

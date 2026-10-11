@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR, S_TYPING, S_PLAN };
 static const char *TYPES[] = { "Monophony", "Melody", "Chords", "Melody+Chords", "Beats" };
@@ -24,8 +25,8 @@ static const char *SCALES[] = { "Major", "Minor", "Dorian", "Phrygian", "Lydian"
 #define N(a) ((int)(sizeof a / sizeof *a))
 
 typedef struct {
-    pthread_mutex_t mu; pthread_cond_t cv; pthread_t th;
-    int th_up, quit, pending, with_audio;
+    pthread_mutex_t mu; pthread_cond_t cv; pthread_t th, th_drop;
+    int th_up, drop_up, quit, pending, with_audio;
     const daemon_io_t *io; void *midi;
     char dir[256], key[128], model[64], url_base[160], input_dir[160]; int input_test;
     int state, rev;
@@ -261,6 +262,21 @@ static void kb_found(void *u, int n) {
     pthread_mutex_unlock(&d->mu);
 }
 
+/* engine/prompt.txt: a text file dropped there (ssh, a phone's file share) is a typed prompt; read once, then deleted */
+static void *drop_watch(void *arg) {
+    dm_t *d = arg; char path[300]; snprintf(path, sizeof path, "%s/prompt.txt", d->dir);
+    for (;;) {
+        for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
+        FILE *f = fopen(path, "r"); if (!f) continue;
+        char t[256]; size_t n = fread(t, 1, sizeof t - 1, f); fclose(f); unlink(path);
+        while (n && (t[n - 1] == '\n' || t[n - 1] == '\r' || t[n - 1] == ' ')) n--;
+        t[n] = 0; if (!n) continue;
+        pthread_mutex_lock(&d->mu);
+        if (d->state != S_THINKING) { snprintf(d->typed, sizeof d->typed, "%s", t); d->have_audio = 0; snprintf(d->transcript, sizeof d->transcript, "%s", t); request(d, 0); }
+        pthread_mutex_unlock(&d->mu);
+    }
+}
+
 static void *create(const char *data_dir) {
     dm_t *d = calloc(1, sizeof *d);
     pthread_mutex_init(&d->mu, NULL); pthread_cond_init(&d->cv, NULL);
@@ -273,6 +289,7 @@ static void *create(const char *data_dir) {
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
     kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
     d->kbd = kbd_start(d->input_dir, d->input_test, cb);
+    pthread_create(&d->th_drop, NULL, drop_watch, d); d->drop_up = 1;
     return d;
 }
 
@@ -280,6 +297,7 @@ static void destroy(void *inst) {
     dm_t *d = inst;
     kbd_stop(d->kbd);                            /* before the lock: its callbacks take it */
     pthread_mutex_lock(&d->mu); d->quit = 1; pthread_cond_signal(&d->cv); pthread_mutex_unlock(&d->mu);
+    if (d->drop_up) pthread_join(d->th_drop, NULL);
     if (d->th_up) pthread_join(d->th, NULL);     /* a request in flight finishes first (60 s at most) */
     if (d->midi && d->pl.npend) { /* the host stopped sending blocks: end any sounding notes */ for (int i = 0; i < d->pl.npend; i++) d->io->midi_send(d->midi, d->channel - 1, 0, d->pl.pend[i].pitch, 0); }
     if (d->midi) d->io->midi_close(d->midi);

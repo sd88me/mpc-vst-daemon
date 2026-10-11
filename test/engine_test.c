@@ -85,6 +85,15 @@ int main(void) {
     p0 = fake.posts; E->set_param(a, "prompt", "four on the floor"); wait_not_thinking(a);
     CHECK(fake.posts == p0 + 1 && !strstr(fake.body, "audio/wav") && strstr(fake.body, "Request: four on the floor"), "typed prompt body: %.120s", fake.body);
 
+    /* engine/prompt.txt: a dropped file is a typed prompt, read once and deleted */
+    {
+        char pf[300]; snprintf(pf, sizeof pf, "%s/prompt.txt", dir); p0 = fake.posts;
+        FILE *f = fopen(pf, "w"); fputs("slow dub bass\n", f); fclose(f);
+        for (int i = 0; i < 300 && fake.posts == p0; i++) usleep(10000);
+        wait_not_thinking(a);
+        CHECK(fake.posts == p0 + 1 && strstr(fake.body, "Request: slow dub bass") && !strstr(fake.body, "audio/wav") && access(pf, F_OK) != 0, "drop file: posts %d body %.100s", fake.posts - p0, fake.body);
+    }
+
     /* typing: [TYPE] arms a keyboard (a FIFO dir stands in for /dev/input), live text shows, Enter sends it as a typed prompt */
     {
         char idir[300]; snprintf(idir, sizeof idir, "%s/input", dir); mkdir(idir, 0700);
