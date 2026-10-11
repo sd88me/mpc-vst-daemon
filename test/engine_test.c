@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/stat.h>
 #include <unistd.h>
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL %s:%d ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); fails++; } } while (0)
@@ -79,6 +82,34 @@ int main(void) {
     p0 = fake.posts; E->set_param(a, "prompt", "four on the floor"); wait_not_thinking(a);
     CHECK(fake.posts == p0 + 1 && !strstr(fake.body, "audio/wav") && strstr(fake.body, "Request: four on the floor"), "typed prompt body: %.120s", fake.body);
 
+    /* typing: [TYPE] arms a keyboard (a FIFO dir stands in for /dev/input), live text shows, Enter sends it as a typed prompt */
+    {
+        char idir[300]; snprintf(idir, sizeof idir, "%s/input", dir); mkdir(idir, 0700);
+        char fifo[340]; snprintf(fifo, sizeof fifo, "%s/event0", idir); mkfifo(fifo, 0600);
+        char cpath[340]; snprintf(cpath, sizeof cpath, "%s/daemon.conf", dir);
+        FILE *cf = fopen(cpath, "a"); fprintf(cf, "input_dir=%s\n", idir); fclose(cf);
+        void *t = E->create(dir);
+        E->set_param(t, "typing", "1");
+        CHECK(!strncmp(get(t, "status"), "TYPING", 6) && !strcmp(get(t, "face"), "Typing"), "typing status '%s' face '%s'", get(t, "status"), get(t, "face"));
+        int wfd = -1; for (int i = 0; i < 400 && wfd < 0; i++) { wfd = open(fifo, O_WRONLY | O_NONBLOCK); if (wfd < 0) usleep(10000); }
+        for (int i = 0; i < 400 && !strstr(get(t, "status"), "Enter sends"); i++) usleep(10000);
+        CHECK(strstr(get(t, "status"), "Enter sends") != NULL, "keyboard found: '%s'", get(t, "status"));
+        struct input_event ev[8]; memset(ev, 0, sizeof ev);
+        int keys[] = { KEY_H, KEY_I }; for (int i = 0; i < 2; i++) { ev[i * 2].type = EV_KEY; ev[i * 2].code = keys[i]; ev[i * 2].value = 1; ev[i * 2 + 1].type = EV_KEY; ev[i * 2 + 1].code = keys[i]; ev[i * 2 + 1].value = 0; }
+        if (write(wfd, ev, sizeof ev[0] * 4) < 0) printf("write failed\n");
+        for (int i = 0; i < 400 && strcmp(get(t, "transcript"), "> hi_"); i++) usleep(10000);
+        CHECK(!strcmp(get(t, "transcript"), "> hi_"), "live typed text '%s'", get(t, "transcript"));
+        fake.code = 200; snprintf(fake.resp, sizeof fake.resp, "%s", OK_REPLY); int pp = fake.posts;
+        memset(ev, 0, sizeof ev); ev[0].type = EV_KEY; ev[0].code = KEY_ENTER; ev[0].value = 1;
+        if (write(wfd, ev, sizeof ev[0]) < 0) printf("write failed\n");
+        for (int i = 0; i < 400 && strncmp(get(t, "status"), "DONE", 4); i++) usleep(10000);
+        CHECK(!strncmp(get(t, "status"), "DONE", 4) && fake.posts == pp + 1 && strstr(fake.body, "Request: hi") && !strstr(fake.body, "audio/wav"), "typed send: '%s' body %.100s", get(t, "status"), fake.body);
+        close(wfd);
+        E->set_param(t, "typing", "1"); E->set_param(t, "typing", "1");       /* arm, then press again to cancel */
+        CHECK(!strcmp(get(t, "status"), "READY") && !strcmp(get(t, "face"), "Idle"), "cancel by pressing TYPE again: '%s'", get(t, "status"));
+        E->destroy(t);
+    }
+
     /* the project chunk round-trips the settings */
     E->set_param(a, "type", "Beats"); E->set_param(a, "key", "D#"); E->set_param(a, "scale", "Blues"); E->set_param(a, "bars", "7"); E->set_param(a, "channel", "10");
     char st[64]; snprintf(st, sizeof st, "%s", get(a, "state"));
@@ -110,7 +141,7 @@ int main(void) {
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
     E->destroy(a);
-    CHECK(fake.closed == 3, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 4, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

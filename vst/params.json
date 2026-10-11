@@ -114,9 +114,15 @@
     "Listening",
     "Thinking",
     "Done",
-    "Error"
+    "Error",
+    "Typing"
    ],
    "default": "Idle"
+  },
+  {
+   "key": "typing",
+   "name": "Type",
+   "momentary": true
   }
  ]
 }

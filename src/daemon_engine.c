@@ -5,13 +5,14 @@
 #include "engine.h"
 #include "daemon_core.h"
 #include "daemon_io.h"
+#include "daemon_kbd.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
-enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR };
+enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR, S_TYPING };
 static const char *TYPES[] = { "Monophony", "Melody", "Chords", "Melody+Chords", "Beats" };
 static const char *KEYS[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 static const char *SCALES[] = { "Major", "Minor", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Locrian", "Harmonic Minor", "Minor Pentatonic", "Blues" };
@@ -21,7 +22,7 @@ typedef struct {
     pthread_mutex_t mu; pthread_cond_t cv; pthread_t th;
     int th_up, quit, pending, with_audio;
     const daemon_io_t *io; void *midi;
-    char dir[256], key[128], model[64], url_base[160];
+    char dir[256], key[128], model[64], url_base[160], input_dir[160]; int input_test;
     int state, rev;
     char status[96], transcript[256], reply[512];
     int type, keyi, scale, bars, channel, play;
@@ -29,6 +30,7 @@ typedef struct {
     dcap_t cap; int have_audio;
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
+    kbd_t *kbd; int kbd_devs;
 } dm_t;
 
 static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
@@ -38,6 +40,7 @@ static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
 static void conf_load(dm_t *d) {
     snprintf(d->model, sizeof d->model, "gemini-3.8-flash");
     snprintf(d->url_base, sizeof d->url_base, "https://generativelanguage.googleapis.com/v1beta/models");
+    snprintf(d->input_dir, sizeof d->input_dir, "/dev/input");
     char path[300]; snprintf(path, sizeof path, "%s/daemon.conf", d->dir);
     FILE *f = fopen(path, "r"); if (!f) return;
     char line[256];
@@ -47,6 +50,7 @@ static void conf_load(dm_t *d) {
         *eq = 0; char *v = eq + 1;
         if (!strcmp(line, "api_key")) snprintf(d->key, sizeof d->key, "%s", v);
         else if (!strcmp(line, "model")) snprintf(d->model, sizeof d->model, "%s", v);
+        else if (!strcmp(line, "input_dir")) { snprintf(d->input_dir, sizeof d->input_dir, "%s", v); d->input_test = 1; }   /* tests: a FIFO dir */
         else if (!strcmp(line, "url_base")) snprintf(d->url_base, sizeof d->url_base, "%s", v);   /* tests point this at a local server */
     }
     fclose(f);
@@ -99,6 +103,29 @@ static void request(dm_t *d, int with_audio) {       /* d->mu held */
     d->with_audio = with_audio; d->pending = 1; set_status(d, S_THINKING, "THINKING%s", ""); pthread_cond_signal(&d->cv);
 }
 
+/* keyboard callbacks run on the reader thread */
+static void kb_changed(void *u, const char *text) {
+    dm_t *d = u; pthread_mutex_lock(&d->mu);
+    if (d->state == S_TYPING) { snprintf(d->transcript, sizeof d->transcript, "> %s_", text); d->rev++; }
+    pthread_mutex_unlock(&d->mu);
+}
+static void kb_submit(void *u, const char *text) {
+    dm_t *d = u; pthread_mutex_lock(&d->mu);
+    if (d->state == S_TYPING) { snprintf(d->typed, sizeof d->typed, "%s", text); d->have_audio = 0; snprintf(d->transcript, sizeof d->transcript, "%s", text); request(d, 0); }
+    pthread_mutex_unlock(&d->mu);
+}
+static void kb_cancel(void *u) {
+    dm_t *d = u; pthread_mutex_lock(&d->mu);
+    if (d->state == S_TYPING) { d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); }
+    pthread_mutex_unlock(&d->mu);
+}
+static void kb_found(void *u, int n) {
+    dm_t *d = u; pthread_mutex_lock(&d->mu);
+    d->kbd_devs = n;
+    if (d->state == S_TYPING) set_status(d, S_TYPING, n ? "TYPING: Enter sends, Esc cancels%s" : "TYPING: no keyboard yet, connect one%s", "");
+    pthread_mutex_unlock(&d->mu);
+}
+
 static void *create(const char *data_dir) {
     dm_t *d = calloc(1, sizeof *d);
     pthread_mutex_init(&d->mu, NULL); pthread_cond_init(&d->cv, NULL);
@@ -108,11 +135,14 @@ static void *create(const char *data_dir) {
     snprintf(d->status, sizeof d->status, "READY"); 
     d->midi = d->io->midi_open("Daemon", "MIDI Out");
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
+    kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
+    d->kbd = kbd_start(d->input_dir, d->input_test, cb);
     return d;
 }
 
 static void destroy(void *inst) {
     dm_t *d = inst;
+    kbd_stop(d->kbd);                            /* before the lock: its callbacks take it */
     pthread_mutex_lock(&d->mu); d->quit = 1; pthread_cond_signal(&d->cv); pthread_mutex_unlock(&d->mu);
     if (d->th_up) pthread_join(d->th, NULL);     /* a request in flight finishes first (60 s at most) */
     if (d->midi && d->pl.npend) { /* the host stopped sending blocks: end any sounding notes */ for (int i = 0; i < d->pl.npend; i++) d->io->midi_send(d->midi, d->channel - 1, 0, d->pl.pend[i].pitch, 0); }
@@ -150,7 +180,13 @@ static void set_param(void *inst, const char *k, const char *v) {
         if (d->state == S_LISTENING) {
             if (daemon_cap_peak(&d->cap) < 300) set_status(d, S_ERROR, "ERROR %s", "heard nothing: route the mic to this track");
             else { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }
-        } else if (d->state != S_THINKING) { daemon_cap_reset(&d->cap); d->have_audio = 0; set_status(d, S_LISTENING, "LISTENING%s", ""); }
+        } else if (d->state != S_THINKING) { if (d->state == S_TYPING) kbd_arm(d->kbd, 0); daemon_cap_reset(&d->cap); d->have_audio = 0; set_status(d, S_LISTENING, "LISTENING%s", ""); }
+    } else if (!strcmp(k, "typing") && on) {
+        if (d->state == S_TYPING) { d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); kbd_arm(d->kbd, 0); }
+        else if (d->state != S_THINKING && d->state != S_LISTENING) {
+            d->transcript[0] = 0; set_status(d, S_TYPING, d->kbd_devs ? "TYPING: Enter sends, Esc cancels%s" : "TYPING: no keyboard yet, connect one%s", "");
+            kbd_arm(d->kbd, 1);
+        }
     } else if (!strcmp(k, "regen") && on) {
         if (d->state != S_THINKING && d->state != S_LISTENING) {
             if (d->typed[0] || d->have_audio) request(d, d->typed[0] ? 0 : 1);
@@ -187,8 +223,8 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "bars")) r = snprintf(b, n, "%d", d->bars);
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
-    else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error" };   /* the skin's picture per state */
-        r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE ? 3 : 4]); }
+    else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
+        r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE ? 3 : d->state == S_TYPING ? 5 : 4]); }
     else if (!strcmp(k, "state")) r = snprintf(b, n, "%d,%d,%d,%d,%d,%d", d->type, d->keyi, d->scale, d->bars, d->channel, d->play);
     pthread_mutex_unlock(&d->mu);
     return r;

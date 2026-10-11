@@ -17,6 +17,8 @@ def eye(d, cx, cy, kind, col):
         d.ellipse((cx - 26, cy - 26, cx + 26, cy + 26), outline=AMBER, width=4); d.ellipse((cx - 11, cy - 11, cx + 11, cy + 11), fill=col)
     elif kind == "aside":
         d.ellipse((cx - 22, cy - 22, cx + 22, cy + 22), outline=AMBER, width=4); d.ellipse((cx + 6, cy - 6, cx + 20, cy + 8), fill=col)
+    elif kind == "down":
+        d.ellipse((cx - 22, cy - 22, cx + 22, cy + 22), outline=AMBER, width=4); d.ellipse((cx - 7, cy + 2, cx + 7, cy + 16), fill=col)
     elif kind == "happy":
         d.arc((cx - 22, cy - 14, cx + 22, cy + 30), 200, 340, fill=col, width=5)
     elif kind == "x":
@@ -30,6 +32,8 @@ def mouth(d, kind, col):
         d.line([(40 + i * 2.2, 142 + math.sin(i * .6) * math.sin(i * .13) * 16) for i in range(0, 50)], fill=col, width=4)
     elif kind == "dots":
         for k in range(3): d.ellipse((72 + k * 24, 136, 84 + k * 24, 148), fill=col)
+    elif kind == "cursor":
+        d.rectangle((64, 128, 84, 154), fill=col); d.line((96, 154, 140, 154), fill=AMBER, width=4)
     elif kind == "smile":
         d.arc((50, 100, 150, 160), 20, 160, fill=col, width=5)
     elif kind == "frown":
@@ -42,6 +46,7 @@ STATES = {  # name: (eye, eye colour, mouth, mouth colour, frame)
     "thinking": ("aside", CYAN, "dots", CYAN, AMBER),
     "done": ("happy", CYAN, "smile", CYAN, AMBER),
     "error": ("x", RED, "frown", RED, RED),
+    "typing": ("down", CYAN, "cursor", CYAN, AMBER),
 }
 os.makedirs(OUT, exist_ok=True)
 for name, (e, ec, m, mc, fr) in STATES.items():

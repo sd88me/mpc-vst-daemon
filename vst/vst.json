@@ -10,7 +10,7 @@
   "root": "..",
   "sources": [
    "src/daemon_engine.c",
-   "src/daemon_core.c",
+   "src/daemon_core.c", "src/daemon_kbd.c",
    "src/io_device.c"
   ],
   "cflags": [
