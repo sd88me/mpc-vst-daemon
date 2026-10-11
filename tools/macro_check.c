@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Validate a macros.json before copying it to a device: tools/macro_check macros.json
  * Build: gcc -O1 -o macro_check tools/macro_check.c src/daemon_macro.c src/daemon_mcp.c src/daemon_json.c -lm */
 #include "../src/daemon_macro.h"

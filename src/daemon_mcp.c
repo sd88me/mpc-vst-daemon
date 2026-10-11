@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 #define _GNU_SOURCE
 #include "daemon_mcp.h"
 #include "daemon_json.h"

@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 # One live Gemini call with a typed prompt, then the reply goes through the same parser the plugin uses.
 # Key: $GEMINI_API_KEY, else ~/.gemini_api_key, else the Windows copy the Max for Live device saves. Never printed.
 set -e

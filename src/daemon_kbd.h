@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Keyboard entry: a USB or Bluetooth keyboard (both are /dev/input/event* devices) types the prompt. While armed, the keyboards
  * are grabbed so MPC does not also act on the keys; disarmed, no device is open. A keyboard that connects after arming is
  * picked up (rescan every second), which is how a Bluetooth one appears. */

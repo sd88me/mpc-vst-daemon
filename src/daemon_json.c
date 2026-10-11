@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 #include "daemon_json.h"
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Daemon core: turns a model reply into a checked note list, plays it against the host song position,
  * writes a Standard MIDI File and builds the request body. No MPC, ALSA or network code in here, so the
  * host test runs it on x86. */

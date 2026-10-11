@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 """A stand-in for the remote addin's MCP endpoint (POST /mcp, JSON reply per request), standard library only. Prints its port first, then
 one line per tool call: "CALL <name> <args json>". A tap with y >= 700 reports no screen change (a stale coordinate); every other touch
 reports a change. screenshot returns a 1x1 PNG. Exits when stdin closes."""

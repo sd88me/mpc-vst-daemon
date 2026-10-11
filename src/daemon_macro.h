@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Tap macros: recorded sequences of touches and button presses that drive MPC's own screens through the remote addin, for the things
  * the commander cannot do (select a track, load a plugin onto it). Coordinates are device- and layout-specific, so they live in a data
  * file recorded on the device (macros.json), never in the code. See docs/MACROS.md for the format.

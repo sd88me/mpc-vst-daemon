@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* A minimal MCP client (Streamable HTTP, JSON reply per request) for the remote addin (jacob-sabella/mpc-addin-remote), which
  * listens on 127.0.0.1:6720/mcp inside MPC. One short TCP connection per call. Blocking: worker threads only. */
 #pragma once

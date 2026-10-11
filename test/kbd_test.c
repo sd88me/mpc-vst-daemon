@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 #include "../src/daemon_kbd.h"
 #include <fcntl.h>
 #include <linux/input.h>

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* What the engine needs from the outside world: a MIDI port and an HTTPS POST. io_device.c is the real one (libasound and
  * libcurl loaded at run time); test/io_fake.c records and answers from a script, so the engine runs offline. */
 #pragma once

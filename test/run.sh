@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 # Offline test of src/daemon_core.c on x86 under ASan+UBSan.
 set -e
 cd "$(dirname "$0")/.."

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* daemon_io.h for tests: records MIDI, answers HTTP from a script. */
 #include "io_fake.h"
 #include "daemon_io.h"

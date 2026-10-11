@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Daemon engine for the shared wrapper (an effect: the mic comes in as the track's audio, a MIDI part goes out on its own port).
  * talk: capture the mic, a second press sends it. regen: ask again (typed prompt if there is one, else the same audio).
  * Network and parsing run on a worker thread; process() and song_pos() never block on it for longer than a short mutex. */

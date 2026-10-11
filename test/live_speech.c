@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Real engine + libcurl, a recorded WAV (44.1 kHz stereo 16-bit) played into process() as the mic, TALK around it.
  * usage: live_speech <dir with daemon.conf> <speech.wav> */
 #include "engine.h"

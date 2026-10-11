@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* The device implementation of daemon_io.h. No link-time dependencies: libasound.so.2 and libcurl.so.4 (both already in MPC OS)
  * are opened on first use, and the few ALSA structures needed are declared here. Compiles on any host; where the libraries are
  * missing the calls just fail. */

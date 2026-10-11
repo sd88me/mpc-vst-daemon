@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* The real engine and the real io_device.c (libcurl) on the host, a typed prompt: prints what the skin would show.
  * usage: live_engine <dir with daemon.conf> "<prompt>" */
 #include "engine.h"

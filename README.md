@@ -25,3 +25,10 @@ Status (offline only; nothing has run on a device yet):
 
 Setup on a device: `daemon.conf` next to the plugin's `engine/` folder with `api_key=...` (optional `model=`, `commander=127.0.0.1:6730`).
 Agent mode needs the commander addin installed. Loading a plugin / choosing a track needs a `macros.json` recorded on the device and the remote addin (docs/MACROS.md); none is recorded yet.
+
+## Licence
+GPL-3.0-or-later (see `LICENSE`; every source file carries an SPDX tag). Daemon is built on the shared wrapper from
+[mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins) (MIT), which is compatible; libcurl and libasound are loaded at run time and
+not linked. If you distribute a modified version, you must make its source available under the same licence.
+
+"Daemon" is a working name, and the licence does not grant any right to the name or branding of the project.

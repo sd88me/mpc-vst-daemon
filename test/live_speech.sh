@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 # Live check with a WAV as the mic: test/live_speech.sh speech.wav. Key as in live_gemini.sh; it is written to a temp daemon.conf, never printed.
 set -e
 cd "$(dirname "$0")/.."

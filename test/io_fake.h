@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 #pragma once
 #define FAKE_EV 4096
 typedef struct { int ch, on, pitch, vel; } fev;

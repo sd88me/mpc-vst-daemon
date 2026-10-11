@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* A short-lived session with the commander addin (jacob-sabella/mpc-addin-commander, docs/PROTOCOL.md): one WebSocket to
  * 127.0.0.1:<port>/ws. On connect the addin pushes hello, the plugin list and the transport; we then read the project, set
  * parameters and press transport buttons over the same socket. Blocking with short timeouts: call from a worker thread only. */

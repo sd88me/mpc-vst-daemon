@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 """A stand-in for the commander addin's WebSocket (docs/PROTOCOL.md of jacob-sabella/mpc-addin-commander), standard library only.
 Prints its port on the first line of stdout, then one line per client message ("MSG {json}"). Exits when stdin closes."""
 import base64, hashlib, json, os, socket, struct, sys, threading, time

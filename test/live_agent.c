@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* Real engine + real Gemini + a fake commander (the MPC stand-in): types a prompt in agent mode, prints the plan, presses RUN and
  * prints what reached the "device". usage: live_agent <dir with daemon.conf> "<prompt>" */
 #include "engine.h"

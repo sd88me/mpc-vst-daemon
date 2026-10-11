@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* A small JSON reader and writer: just enough for model replies, Gemini envelopes and the commander protocol. */
 #pragma once
 #include <stddef.h>

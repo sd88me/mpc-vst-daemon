@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 sd88me */
 /* The agent: Gemini function calling over a small set of tools that read and drive the device through the commander addin.
  * Read-only tools run while planning; tools that change anything are only collected into a plan, and run when the user presses RUN.
  * Everything here is pure (strings in, strings out) except agent_exec, which talks to a commander session. */

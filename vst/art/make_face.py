@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 sd88me
 """Draws the Daemon face, one PNG per state, into ../images/ (200x180, transparent). Amber lines, cyan for the live parts.
 Run: python3 art/make_face.py   (needs Pillow)."""
 import math
