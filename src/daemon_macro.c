@@ -3,6 +3,7 @@
 #define _GNU_SOURCE
 #include "daemon_macro.h"
 #include "daemon_json.h"
+#include "daemon_fp.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
@@ -54,8 +55,8 @@ static int eval_jv(jv *v, const char **names, const double *vals, int n, double 
 }
 
 /* ---- validation ---- */
-static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "call", "repeat", NULL };
-static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", NULL };
+static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "call", "repeat", "expect", NULL };
+static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", NULL };
 static int in_list(const char *k, const char **l) { for (; *l; l++) if (!strcmp(k, *l)) return 1; return 0; }
 
 static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, size_t cap, int depth) {
@@ -77,6 +78,9 @@ static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, siz
         for (const char *key = "tap"; key; key = !strcmp(key, "tap") ? "double_tap" : !strcmp(key, "double_tap") ? "long_press" : NULL)
             if ((c = djson_get(s, key)) != NULL && (c->t != 'a' || djson_len(c) != 2)) { snprintf(err, cap, "macro %s step %d: %s needs [x, y]", macro, i + 1, key); return -1; }
         if ((c = djson_get(s, "scroll")) != NULL && (c->t != 'a' || djson_len(c) != 2 || !djson_get(s, "direction"))) { snprintf(err, cap, "macro %s step %d: scroll needs [x, y] and a direction", macro, i + 1); return -1; }
+        if ((c = djson_get(s, "expect")) != NULL) {
+            if (c->t != 's' || !djson_get(djson_get(m->root, "fingerprints"), c->str)) { snprintf(err, cap, "macro %s step %d: expects an unknown fingerprint", macro, i + 1); return -1; }
+        }
         if ((c = djson_get(s, "repeat")) != NULL) { if (check_steps(m, djson_get(s, "steps"), macro, err, cap, depth + 1)) return -1; }
     }
     return 0;
@@ -90,6 +94,14 @@ macros_t *macros_parse(const char *json, char *err, size_t errcap) {
     jv *scr = djson_get(m->root, "screen");
     if (!scr || djson_len(scr) != 2) { snprintf(err, errcap, "macros file: \"screen\": [width, height] is required (the screen it was recorded on)"); macros_free(m); return NULL; }
     m->w = (int)djson_at(scr, 0)->num; m->h = (int)djson_at(scr, 1)->num;
+    jv *fps = djson_get(m->root, "fingerprints");
+    if (fps && fps->t != 'o') { snprintf(err, errcap, "macros file: \"fingerprints\" must be an object"); macros_free(m); return NULL; }
+    for (jv *f = fps ? fps->kid : NULL; f; f = f->next) {
+        jv *rg = djson_get(f, "region"); uint8_t tmp[FP_BYTES];
+        if (!rg || djson_len(rg) != 4 || (int)djson_at(rg, 2)->num <= 0 || (int)djson_at(rg, 3)->num <= 0 || (int)djson_at(rg, 0)->num < 0 || (int)djson_at(rg, 1)->num < 0 ||
+            (int)(djson_at(rg, 0)->num + djson_at(rg, 2)->num) > m->w || (int)(djson_at(rg, 1)->num + djson_at(rg, 3)->num) > m->h) { snprintf(err, errcap, "fingerprint %s: region must be [x, y, w, h] inside the %dx%d screen", f->key, m->w, m->h); macros_free(m); return NULL; }
+        if (fp_unhex(djson_str(f, "thumb", ""), tmp)) { snprintf(err, errcap, "fingerprint %s: thumb must be %d hex digits", f->key, FP_BYTES * 2); macros_free(m); return NULL; }
+    }
     jv *ms = djson_get(m->root, "macros");
     if (!ms || ms->t != 'o' || !ms->kid) { snprintf(err, errcap, "macros file: no macros"); macros_free(m); return NULL; }
     for (jv *mc = ms->kid; mc; mc = mc->next) {
@@ -196,6 +208,15 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
             int rc = r->vision(r->user, target, hint, png, r->sw, r->sh, &x, &y, why, sizeof why); free(png);
             if (rc < 0) return fail(r, "could not find on screen: %.160s", why[0] ? why : target, i, macro);
             if (touch(r, "tap", x, y, s, macro, i, 1)) return -1;      /* a found target must do something, unless the step says otherwise */
+        } else if ((a = djson_get(s, "expect"))) {
+            jv *f = djson_get(djson_get(r->m->root, "fingerprints"), a->str); jv *rg = djson_get(f, "region"); uint8_t want[FP_BYTES], got[FP_BYTES];
+            double tol = djson_num(f, "tolerance", 12), dist = 1e9; fp_unhex(djson_str(f, "thumb", ""), want);
+            long timeout = (long)djson_num(s, "timeout_ms", 2000), waited = 0; char e2[160] = "";
+            for (;;) {
+                if (fp_capture(r->mcp, (int)djson_at(rg, 0)->num, (int)djson_at(rg, 1)->num, (int)djson_at(rg, 2)->num, (int)djson_at(rg, 3)->num, got, e2, sizeof e2) == 0) { dist = fp_distance(want, got); if (dist <= tol) break; }
+                if (waited >= timeout) { char c[200]; if (dist > 1e8) snprintf(c, sizeof c, "could not check the screen: %.120s", e2); else snprintf(c, sizeof c, "the screen does not look like \"%.40s\" (difference %.1f, allowed %.1f)", a->str, dist, tol); return fail(r, "%s", c, i, macro); }
+                usleep(150000); waited += 150;
+            }
         } else if ((a = djson_get(s, "call"))) {
             if (run_macro(r, a->str, depth + 1)) return -1;
         } else if ((a = djson_get(s, "repeat"))) {

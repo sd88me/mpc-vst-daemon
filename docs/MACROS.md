@@ -46,6 +46,20 @@ the agent uses; both take the parameters shown.
   anything. Set it on every touch that must do something. A `find_tap` has it on by default.
 - At most 200 steps run per macro run, and `label` is only for you.
 
+## Fingerprints: check the screen without a model
+A fingerprint is a 16 x 8 grid of average brightness of a screen region. A step `{ "expect": "page_name" }` takes a fresh screenshot of just
+that region, compares it with the stored grid, and waits up to `timeout_ms` (default 2000) for it to match, because screens take a
+moment to settle. If it never matches, the macro stops and says how far off the screen was. Use it after every step that opens a page,
+and after a `find_tap`, so a wrong tap is caught before the next one. Nothing here calls a model.
+```json
+"fingerprints": {
+  "track_view": { "region": [0, 90, 1280, 120], "thumb": "<256 hex digits>", "tolerance": 12 }
+}
+```
+`tools/macro_fp <port> <name> x y w h` prints the entry for the screen as it is now (build line in its header). Choose a region of fixed
+furniture (titles, tabs, labels), not meters, a playhead or a blinking cursor. `tolerance` is the largest average brightness difference
+(0 to 255) still accepted: small live changes pass, a different page is far over it.
+
 ## The vision step
 `find_tap` takes a screenshot, asks Gemini where the named button, tile or list entry is (a point in 0 to 1000 of the image, converted
 to screen pixels), and taps it. It is how `load_plugin` can pick "9W9" out of a list without knowing its position. It only taps when

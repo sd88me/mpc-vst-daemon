@@ -17,7 +17,8 @@
    "src/daemon_agent.c",
    "src/daemon_cmdr.c",
    "src/daemon_macro.c",
-   "src/daemon_mcp.c"
+   "src/daemon_mcp.c",
+   "src/daemon_fp.c"
   ],
   "cflags": [
    "-Isrc"

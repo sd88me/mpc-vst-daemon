@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 sd88me */
 #include "../src/daemon_macro.h"
+#include "../src/daemon_fp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +73,35 @@ int main(void) {
     CHECK(macro_run(m, mcp, "burst", "{}", vision_ok, NULL, res, sizeof res) == 0 && strstr(res, "(4 steps)"), "repeat: %s", res);
     CHECK(macro_run(m, mcp, "ping", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "nested too deep"), "call cycle: %s", res);
     CHECK(macro_run(m, mcp, "badbutton", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "No button"), "bad button: %s", res);
+
+    /* fingerprints: record two screens from the fake, then check macros against them */
+    {
+        uint8_t ta[FP_BYTES], tb[FP_BYTES]; char ha[FP_BYTES * 2 + 1], hb[FP_BYTES * 2 + 1], js[6000], e2[100], tx[200];
+        mcp_call(mcp, "tap", "{\"x\":10,\"y\":10,\"screenshot\":\"none\"}", tx, sizeof tx, NULL);
+        fp_capture(mcp, 100, 100, 400, 300, ta, e2, sizeof e2);
+        mcp_call(mcp, "tap", "{\"x\":640,\"y\":400,\"screenshot\":\"none\"}", tx, sizeof tx, NULL);
+        fp_capture(mcp, 100, 100, 400, 300, tb, e2, sizeof e2);
+        mcp_call(mcp, "tap", "{\"x\":10,\"y\":10,\"screenshot\":\"none\"}", tx, sizeof tx, NULL);
+        fp_hex(ta, ha); fp_hex(tb, hb);
+        snprintf(js, sizeof js, "{\"version\":1,\"screen\":[1280,800],\"fingerprints\":{"
+            "\"pageA\":{\"region\":[100,100,400,300],\"thumb\":\"%s\"},\"pageB\":{\"region\":[100,100,400,300],\"thumb\":\"%s\",\"tolerance\":12}},\"macros\":{"
+            "\"go_b\":{\"steps\":[{\"tap\":[640,400]},{\"expect\":\"pageB\"}]},"
+            "\"back_a\":{\"steps\":[{\"tap\":[10,10]},{\"expect\":\"pageA\"}]},"
+            "\"wrong\":{\"steps\":[{\"tap\":[10,10]},{\"expect\":\"pageB\",\"timeout_ms\":300}]}}}", ha, hb);
+        macros_t *fm = macros_parse(js, err, sizeof err); CHECK(fm != NULL, "fingerprint file: %s", err); if (fm) {
+            CHECK(macro_run(fm, mcp, "go_b", "{}", NULL, NULL, res, sizeof res) == 0 && strstr(res, "(2 steps)"), "expect passes on the right screen: %s", res);
+            CHECK(macro_run(fm, mcp, "back_a", "{}", NULL, NULL, res, sizeof res) == 0, "and on the way back: %s", res);
+            CHECK(macro_run(fm, mcp, "wrong", "{}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "does not look like \"pageB\"") && strstr(res, "difference"), "expect stops on the wrong screen: %s", res);
+            macros_free(fm);
+        }
+        const char *badfp[][2] = {
+            { "\"fingerprints\":[],\"macros\":{\"a\":{\"steps\":[{\"wait\":1}]}}", "must be an object" },
+            { "\"fingerprints\":{\"x\":{\"region\":[0,0,2000,100],\"thumb\":\"00\"}},\"macros\":{\"a\":{\"steps\":[{\"wait\":1}]}}", "inside the 1280x800 screen" },
+            { "\"fingerprints\":{\"x\":{\"region\":[0,0,10,10],\"thumb\":\"abcd\"}},\"macros\":{\"a\":{\"steps\":[{\"wait\":1}]}}", "hex digits" },
+            { "\"fingerprints\":{},\"macros\":{\"a\":{\"steps\":[{\"expect\":\"nope\"}]}}", "unknown fingerprint" },
+        };
+        for (int i = 0; i < 4; i++) { char j2[1200]; snprintf(j2, sizeof j2, "{\"version\":1,\"screen\":[1280,800],%s}", badfp[i][0]); macros_t *b = macros_parse(j2, err, sizeof err); CHECK(b == NULL && strstr(err, badfp[i][1]), "bad fingerprint file %d: '%s'", i, err); macros_free(b); }
+    }
 
     macros_t *other = macros_parse("{\"version\":1,\"screen\":[1920,1080],\"macros\":{\"a\":{\"steps\":[{\"tap\":[1,1]}]}}}", err, sizeof err);
     CHECK(macro_run(other, mcp, "a", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "recorded for a 1920x1080 screen, this one is 1280x800"), "screen mismatch: %s", res);
