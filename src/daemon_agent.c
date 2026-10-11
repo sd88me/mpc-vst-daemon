@@ -6,9 +6,10 @@
 #include <string.h>
 
 static const char *READ_ONLY[] = { "get_project", "list_plugins", "get_plugin_params" };
-static const char *MUTATING[] = { "set_param", "transport", "play_part" };
+static const char *MUTATING[] = { "set_param", "transport", "play_part", "select_track", "load_plugin" };
 int agent_tool_is_read_only(const char *n) { for (int i = 0; i < 3; i++) if (!strcmp(n, READ_ONLY[i])) return 1; return 0; }
-int agent_tool_known(const char *n) { if (agent_tool_is_read_only(n)) return 1; for (int i = 0; i < 3; i++) if (!strcmp(n, MUTATING[i])) return 1; return 0; }
+int agent_tool_is_ui(const char *n) { return !strcmp(n, "select_track") || !strcmp(n, "load_plugin"); }
+int agent_tool_known(const char *n) { if (agent_tool_is_read_only(n)) return 1; for (int i = 0; i < 5; i++) if (!strcmp(n, MUTATING[i])) return 1; return 0; }
 
 /* ---- history ---- */
 void agent_hist_init(ahist_t *h) { memset(h, 0, sizeof *h); }
@@ -62,7 +63,11 @@ static const char *TOOLS =
  "{\"name\":\"transport\",\"description\":\"Press a transport button on the MPC.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"cmd\":{\"type\":\"STRING\",\"enum\":[\"play\",\"stop\",\"continue\",\"record\"]}},\"required\":[\"cmd\"]}},"
  "{\"name\":\"play_part\",\"description\":\"Make a MIDI part and loop it from Daemon's own MIDI port, in time with the MPC transport. Notes use beats from the start of the part.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{"
    "\"name\":{\"type\":\"STRING\"},\"channel\":{\"type\":\"INTEGER\"},\"notes\":{\"type\":\"ARRAY\",\"description\":\"each note is [pitch, start_time, duration, velocity]\",\"items\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"NUMBER\"}}}},\"required\":[\"notes\"]}}"
- "]}]";
+ ;
+static const char *TOOLS_UI =
+ ",{\"name\":\"select_track\",\"description\":\"Select a track on the MPC's screen by touching it (a recorded sequence of touches). Needed before anything that works on the selected track.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}},"
+ "{\"name\":\"load_plugin\",\"description\":\"Load a plugin as the instrument of a track, finding it in the MPC's plugin browser by name. Selects the track itself.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}}";
+static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
     char sys[3000];
@@ -71,12 +76,12 @@ int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t c
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "You cannot load a plugin onto a track, rename or delete anything: say so briefly if asked, and do what you can. "
+        "You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading a plugin onto a track is only possible when the load_plugin tool exists; otherwise say you cannot. Selecting or loading touches the screen and is slow, so do it only when asked. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
         ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
     size_t n = 0; int w;
-    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s,\"contents\":[", s, TOOLS); free(s);
+    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s%s%s,\"contents\":[", s, TOOLS, ctx->has_ui ? TOOLS_UI : "", TOOLS_END); free(s);
     if (w < 0 || (size_t)w >= cap) return -1;
     n = (size_t)w;
     for (int i = 0; i < h->n; i++) {
@@ -126,7 +131,7 @@ int agent_parse_turn(const char *response, aturn_t *t) {
 /* ---- running tools ---- */
 static int jerr(char *r, size_t cap, const char *msg) { jv v = { 's', 0, (char *)msg, NULL, NULL, NULL }; char e[300]; djson_write(&v, e, sizeof e); snprintf(r, cap, "{\"error\":%s}", e); return -1; }
 
-int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, void *user, char *result, size_t cap) {
+int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn ui, void *user, char *result, size_t cap) {
     jv *a = djson_parse(call->args, strlen(call->args));
     int rc = 0;
     if (!a) return jerr(result, cap, "bad arguments");
@@ -149,6 +154,12 @@ int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, void *user, c
         if (!play) rc = jerr(result, cap, "parts are not available here");
         else if (play(user, call->args, msg, sizeof msg) < 0) rc = jerr(result, cap, msg[0] ? msg : "no usable notes");
         else { jv t = { 's', 0, msg, NULL, NULL, NULL }; char tj[300]; djson_write(&t, tj, sizeof tj); snprintf(result, cap, "{\"ok\":true,\"note\":%s}", tj); }
+    }
+    else if (agent_tool_is_ui(call->name)) {
+        char msg[300] = "";
+        if (!ui) rc = jerr(result, cap, "this needs tap macros recorded on the device, and there are none");
+        else if (ui(user, call->name, call->args, msg, sizeof msg) < 0) rc = jerr(result, cap, msg[0] ? msg : "the macro failed");
+        else { jv t = { 's', 0, msg, NULL, NULL, NULL }; char tj[400]; djson_write(&t, tj, sizeof tj); snprintf(result, cap, "{\"ok\":true,\"note\":%s}", tj); }
     }
     else rc = jerr(result, cap, "unknown tool");
     djson_free(a);
@@ -173,6 +184,8 @@ int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
     }
     if (!strcmp(call->name, "set_param")) snprintf(out, cap, "set %s %s to %.0f%%", plug[0] ? plug : "plugin", pname[0] ? pname : "parameter", djson_num(a, "value", 0) * 100);
     else if (!strcmp(call->name, "transport")) snprintf(out, cap, "press %s", djson_str(a, "cmd", "?"));
+    else if (!strcmp(call->name, "select_track")) snprintf(out, cap, "select track %d", (int)djson_num(a, "track", 0));
+    else if (!strcmp(call->name, "load_plugin")) snprintf(out, cap, "load %s on track %d", djson_str(a, "plugin", "?"), (int)djson_num(a, "track", 0));
     else if (!strcmp(call->name, "play_part")) snprintf(out, cap, "make a part \"%s\" on channel %d, %d notes", djson_str(a, "name", "daemon"), (int)djson_num(a, "channel", 2), djson_len(djson_get(a, "notes")));
     else snprintf(out, cap, "%s", call->name);
     djson_free(a);

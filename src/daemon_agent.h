@@ -21,7 +21,7 @@ int agent_hist_model(ahist_t *h, const aturn_t *t);                             
 /* The results of the calls in t (results[i] is JSON text for t->calls[i]); skipped calls pass NULL and are answered "not run". */
 int agent_hist_results(ahist_t *h, const aturn_t *t, const char *const *results);
 
-typedef struct { double bpm; const char *scale; int bars; const char *typed_context; } actx_t;
+typedef struct { double bpm; const char *scale; int bars; const char *typed_context; int has_ui; } actx_t;   /* has_ui: select_track and load_plugin are offered */
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap);
 int agent_parse_turn(const char *response, aturn_t *t);        /* 0 ok; -1: t->text holds the API error or why there is no turn */
 void agent_turn_free(aturn_t *t);
@@ -29,6 +29,9 @@ void agent_turn_free(aturn_t *t);
 /* Run one tool. Read-only tools and set_param/transport use the session; play_part is handed to play (args JSON in, result text out,
  * returns 0 ok). result gets JSON text. Returns 0 if the tool ran, -1 if it failed (result then says why). */
 typedef int (*agent_play_fn)(void *user, const char *args_json, char *result, size_t cap);
-int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, void *user, char *result, size_t cap);
+/* select_track and load_plugin are handed to ui (tool name, args JSON), which runs the matching tap macro. */
+typedef int (*agent_ui_fn)(void *user, const char *tool, const char *args_json, char *result, size_t cap);
+int agent_tool_is_ui(const char *name);
+int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn ui, void *user, char *result, size_t cap);
 /* One line for the screen: "set Profit-8 Cutoff to 35%" */
 int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap);

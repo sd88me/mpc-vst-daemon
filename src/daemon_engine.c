@@ -8,6 +8,7 @@
 #include "daemon_kbd.h"
 #include "daemon_agent.h"
 #include "daemon_json.h"
+#include "daemon_macro.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,7 @@ typedef struct {
     kbd_t *kbd; int kbd_devs;
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
     aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
+    macros_t *macros; char remote_host[48]; int remote_port;
 } dm_t;
 
 static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
@@ -44,7 +46,7 @@ static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
 static void conf_load(dm_t *d) {
     snprintf(d->model, sizeof d->model, "gemini-3.8-flash");
     snprintf(d->url_base, sizeof d->url_base, "https://generativelanguage.googleapis.com/v1beta/models");
-    snprintf(d->input_dir, sizeof d->input_dir, "/dev/input"); snprintf(d->cmdr_host, sizeof d->cmdr_host, "127.0.0.1"); d->cmdr_port = 6730;
+    snprintf(d->input_dir, sizeof d->input_dir, "/dev/input"); snprintf(d->cmdr_host, sizeof d->cmdr_host, "127.0.0.1"); d->cmdr_port = 6730; snprintf(d->remote_host, sizeof d->remote_host, "127.0.0.1"); d->remote_port = 6720;
     char path[300]; snprintf(path, sizeof path, "%s/daemon.conf", d->dir);
     FILE *f = fopen(path, "r"); if (!f) return;
     char line[256];
@@ -56,6 +58,7 @@ static void conf_load(dm_t *d) {
         else if (!strcmp(line, "model")) snprintf(d->model, sizeof d->model, "%s", v);
         else if (!strcmp(line, "input_dir")) { snprintf(d->input_dir, sizeof d->input_dir, "%s", v); d->input_test = 1; }   /* tests: a FIFO dir */
         else if (!strcmp(line, "commander")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->cmdr_host, sizeof d->cmdr_host, "%s", h); d->cmdr_port = pt; } }
+        else if (!strcmp(line, "remote")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->remote_host, sizeof d->remote_host, "%s", h); d->remote_port = pt; } }
         else if (!strcmp(line, "url_base")) snprintf(d->url_base, sizeof d->url_base, "%s", v);   /* tests point this at a local server */
     }
     fclose(f);
@@ -63,10 +66,11 @@ static void conf_load(dm_t *d) {
 
 
 /* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
-typedef struct { char typed[256]; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; } snap_t;
+typedef struct { char typed[256]; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; } snap_t;
+typedef struct { dm_t *d; const snap_t *s; mcp_t *mcp; } uictx;       /* what the tool callbacks get */
 
 static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
-    dm_t *d = u; dpart_t *np = malloc(sizeof *np);
+    dm_t *d = ((uictx *)u)->d; dpart_t *np = malloc(sizeof *np);
     int n = daemon_parse_reply(args, 32.0f, np);
     if (n <= 0) { snprintf(res, cap, "no usable notes"); free(np); return -1; }
     jv *a = djson_parse(args, strlen(args));
@@ -80,6 +84,30 @@ static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
     djson_free(a); free(np); return 0;
 }
 
+
+/* the vision step of a tap macro: ask Gemini where `target` is on this screenshot */
+static int vision_gemini(void *u, const char *target, const char *hint, const char *png, int w, int h, int *x, int *y, char *why, size_t wc) {
+    uictx *c = u; dm_t *d = c->d;
+    char *body = malloc(strlen(png) + 2000), *resp = malloc(200000), *text = malloc(200000); int rc = -1;
+    int bl = daemon_build_vision_request(target, hint, png, w, h, body, strlen(png) + 2000);
+    if (bl < 0) snprintf(why, wc, "screenshot too large");
+    else {
+        int code = d->io->http_post(c->s->url, c->s->key, body, (size_t)bl, resp, 200000, 60);
+        if (code == 0) snprintf(why, wc, "no network: %.100s", resp);
+        else if (daemon_extract_text(resp, text, 200000) < 0) snprintf(why, wc, "%d %.100s", code, text);
+        else rc = daemon_parse_point(text, w, h, x, y, why, wc);
+    }
+    free(body); free(resp); free(text); return rc;
+}
+
+/* select_track / load_plugin: the macro of the same name, on the remote addin's MCP */
+static int ui_cb(void *u, const char *tool, const char *args, char *res, size_t cap) {
+    uictx *c = u; dm_t *d = c->d;
+    if (!d->macros || !macros_has(d->macros, tool)) { snprintf(res, cap, "no macro %s is recorded on this device", tool); return -1; }
+    if (!c->mcp) { char err[120]; c->mcp = mcp_open(c->s->host_remote, c->s->port_remote, err, sizeof err); if (!c->mcp) { snprintf(res, cap, "%s", err); return -1; } }
+    return macro_run(d->macros, c->mcp, tool, args, vision_gemini, c, res, cap);
+}
+
 static void publish_error(dm_t *d, const char *fmt, const char *a) { pthread_mutex_lock(&d->mu); set_status(d, S_ERROR, fmt, a); pthread_mutex_unlock(&d->mu); }
 
 static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
@@ -87,7 +115,8 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
     agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
-    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so." };
+    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", d->macros != NULL };
+    uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
     int done = 0;
     for (int round = 0; round < 6 && !done; round++) {
@@ -106,7 +135,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         for (int i = 0; i < t.n; i++) {
             rs[i] = NULL;
             if (agent_tool_is_read_only(t.calls[i].name)) {
-                rs[i] = tool_res + used; agent_exec(c, &t.calls[i], play_part_cb, d, rs[i], 200000 / AGENT_MAX_CALLS); used += strlen(rs[i]) + 1;
+                rs[i] = tool_res + used; agent_exec(c, &t.calls[i], play_part_cb, ui_cb, &uc, rs[i], 200000 / AGENT_MAX_CALLS); used += strlen(rs[i]) + 1;
             } else mut++;
         }
         if (!mut) { agent_hist_model(&h, &t); agent_hist_results(&h, &t, (const char *const *)rs); agent_turn_free(&t); continue; }
@@ -124,7 +153,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         done = 1;
     }
     if (!done) publish_error(d, "ERROR %s", "too many steps without a plan");
-    free(tool_res); agent_hist_free(&h); cmdr_close(c);
+    free(tool_res); agent_hist_free(&h); cmdr_close(c); mcp_close(uc.mcp);
 }
 
 static void agent_run(dm_t *d, const snap_t *s) {
@@ -133,14 +162,17 @@ static void agent_run(dm_t *d, const snap_t *s) {
     aturn_t plan = d->plan; plan.raw = NULL;                     /* a copy of the calls; the plan keeps the raw turn */
     pthread_mutex_unlock(&d->mu);
     char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);
-    char *res = malloc(8000); int ok = 0, total = 0; char first_err[100] = "";
+    char *res = malloc(8000); int ok = 0, total = 0; char first_err[100] = ""; uictx uc = { d, s, NULL };
+    for (int i = 0; i < plan.n; i++) if (!agent_tool_is_read_only(plan.calls[i].name)) total++;
     for (int i = 0; i < plan.n; i++) {
         if (agent_tool_is_read_only(plan.calls[i].name)) continue;
-        total++;
-        if (agent_exec(c, &plan.calls[i], play_part_cb, d, res, 8000) == 0) ok++;
-        else if (!first_err[0]) snprintf(first_err, sizeof first_err, "%.50s: %.40s", plan.calls[i].name, res);
+        if (agent_exec(c, &plan.calls[i], play_part_cb, ui_cb, &uc, res, 8000) == 0) ok++;
+        else {
+            if (!first_err[0]) snprintf(first_err, sizeof first_err, "%.50s: %.40s", plan.calls[i].name, res);
+            if (agent_tool_is_ui(plan.calls[i].name)) break;       /* the screen is in an unknown state: do not go on */
+        }
     }
-    free(res); cmdr_close(c);
+    free(res); cmdr_close(c); mcp_close(uc.mcp);
     pthread_mutex_lock(&d->mu);
     d->plan_ok = 0; agent_turn_free(&d->plan);
     char m[160];
@@ -171,7 +203,7 @@ static void *worker(void *arg) {
         if (mode == 2 || mode == 3) {
             snap_t sn; memset(&sn, 0, sizeof sn);
             snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
-            snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port;
+            snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port; snprintf(sn.host_remote, sizeof sn.host_remote, "%s", d->remote_host); sn.port_remote = d->remote_port;
             if (mode == 2) agent_plan(d, &sn, body, resp); else agent_run(d, &sn);
             pthread_mutex_lock(&d->mu);
             continue;
@@ -233,6 +265,7 @@ static void *create(const char *data_dir) {
     snprintf(d->dir, sizeof d->dir, "%s", data_dir ? data_dir : ".");
     d->io = daemon_io(); d->type = 2; d->keyi = 5; d->scale = 1; d->bars = 4; d->channel = 2; d->play = 1;
     conf_load(d);
+    { char mp[300], me[160]; snprintf(mp, sizeof mp, "%s/macros.json", d->dir); d->macros = macros_load(mp, me, sizeof me); }   /* none is fine: the screen tools are then not offered */
     snprintf(d->status, sizeof d->status, "READY"); 
     d->midi = d->io->midi_open("Daemon", "MIDI Out");
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
@@ -248,7 +281,7 @@ static void destroy(void *inst) {
     if (d->th_up) pthread_join(d->th, NULL);     /* a request in flight finishes first (60 s at most) */
     if (d->midi && d->pl.npend) { /* the host stopped sending blocks: end any sounding notes */ for (int i = 0; i < d->pl.npend; i++) d->io->midi_send(d->midi, d->channel - 1, 0, d->pl.pend[i].pitch, 0); }
     if (d->midi) d->io->midi_close(d->midi);
-    agent_turn_free(&d->plan);
+    agent_turn_free(&d->plan); macros_free(d->macros);
     pthread_mutex_destroy(&d->mu); pthread_cond_destroy(&d->cv);
     free(d);
 }

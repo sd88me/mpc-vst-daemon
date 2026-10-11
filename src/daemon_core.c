@@ -235,3 +235,40 @@ int daemon_cap_wav(const dcap_t *c, uint8_t *out, size_t cap) {
     memcpy(out + 44, c->pcm, data);              /* the device is little-endian (armv7, aarch64) as is x86 */
     return (int)(44 + data);
 }
+
+/* ---- vision ---- */
+int daemon_build_vision_request(const char *target, const char *hint, const char *png_b64, int w, int h, char *buf, size_t cap) {
+    sb s = { buf, cap, 0, 0 }; if (cap) buf[0] = 0;
+    char num[96];
+    sstr(&s, "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"inline_data\":{\"mime_type\":\"image/png\",\"data\":\"");
+    sstr(&s, png_b64);
+    sstr(&s, "\"}},{\"text\":\"");
+    snprintf(num, sizeof num, "This is a screenshot of the %dx%d touchscreen of an Akai MPC. ", w, h); sjson(&s, num);
+    if (hint && hint[0]) { sjson(&s, "What it should be showing: "); sjson(&s, hint); sjson(&s, ". "); }
+    sjson(&s, "Find the button, tile or list entry whose label reads: "); sjson(&s, target);
+    sjson(&s, ". Answer with the centre of that one item as point [y, x], each from 0 to 1000 (fractions of the image height and width). "
+              "If it is not clearly visible, or more than one item matches equally, say found=false and why in reason. Never guess.");
+    sstr(&s, "\"}]}],\"generationConfig\":{\"thinkingConfig\":{\"thinkingLevel\":\"low\"},\"responseMimeType\":\"application/json\",\"responseSchema\":{\"type\":\"OBJECT\","
+             "\"properties\":{\"found\":{\"type\":\"BOOLEAN\"},\"point\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"NUMBER\"}},\"reason\":{\"type\":\"STRING\"}},\"required\":[\"found\"]}}}");
+    return s.bad ? -1 : (int)s.n;
+}
+
+int daemon_parse_point(const char *text, int w, int h, int *x, int *y, char *why, size_t whycap) {
+    const char *a = strchr(text, '{'), *b = strrchr(text, '}');
+    if (why && whycap) why[0] = 0;
+    if (!a || !b || b < a) { snprintf(why, whycap, "the model did not answer with JSON"); return -1; }
+    jv *v = djson_parse(a, (size_t)(b + 1 - a));
+    if (!v) { snprintf(why, whycap, "the model's answer was not valid JSON"); return -1; }
+    jv *f = djson_get(v, "found"); jv *p = djson_get(v, "point");
+    const char *reason = djson_str(v, "reason", "");
+    int rc = -1;
+    if (!f || f->num == 0) snprintf(why, whycap, "%s", reason[0] ? reason : "not found on the screen");
+    else if (!p || p->t != 'a' || djson_len(p) != 2 || djson_at(p, 0)->t != 'n' || djson_at(p, 1)->t != 'n') snprintf(why, whycap, "no usable point in the answer");
+    else {
+        double py = djson_at(p, 0)->num, px = djson_at(p, 1)->num;
+        if (py < 0 || py > 1000 || px < 0 || px > 1000) snprintf(why, whycap, "the point is outside the screen");
+        else { *x = (int)(px * w / 1000.0 + 0.5); *y = (int)(py * h / 1000.0 + 0.5); if (*x >= w) *x = w - 1; if (*y >= h) *y = h - 1; rc = 0; }
+    }
+    djson_free(v);
+    return rc;
+}

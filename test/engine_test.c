@@ -153,6 +153,65 @@ int main(void) {
         fake.nq = 0;
     }
 
+    /* device tools: load_plugin runs a recorded macro through the remote addin; the vision step asks Gemini where the plugin is.
+     * A failing screen action stops the run before the changes after it. (The macros here are test data, not a recording.) */
+    {
+        int ci[2], co[2], ri[2], ro[2]; if (pipe(ci) || pipe(co) || pipe(ri) || pipe(ro)) return 1;
+        pid_t pc = fork();
+        if (!pc) { dup2(ci[0], 0); dup2(co[1], 1); close(ci[1]); close(co[0]); close(ri[0]); close(ri[1]); close(ro[0]); close(ro[1]); execlp("python3", "python3", "-I", "test/fake_commander.py", (char *)NULL); _exit(127); }
+        pid_t pr = fork();
+        if (!pr) { dup2(ri[0], 0); dup2(ro[1], 1); close(ri[1]); close(ro[0]); close(ci[0]); close(ci[1]); close(co[0]); close(co[1]); execlp("python3", "python3", "-I", "test/fake_remote.py", (char *)NULL); _exit(127); }
+        close(ci[0]); close(co[1]); close(ri[0]); close(ro[1]);
+        FILE *cso = fdopen(co[0], "r"), *rso = fdopen(ro[0], "r"); char l1[100], l2[100];
+        if (!fgets(l1, sizeof l1, cso) || !fgets(l2, sizeof l2, rso)) { printf("fakes did not start\n"); return 1; }
+        char d2[] = "/tmp/daemon_eng2_XXXXXX"; if (!mkdtemp(d2)) return 1;
+        char p1[340]; snprintf(p1, sizeof p1, "%s/daemon.conf", d2);
+        FILE *cf = fopen(p1, "w"); fprintf(cf, "api_key=K\nurl_base=http://x/models\ncommander=127.0.0.1:%d\nremote=127.0.0.1:%d\n", atoi(l1), atoi(l2)); fclose(cf);
+        snprintf(p1, sizeof p1, "%s/macros.json", d2);
+        cf = fopen(p1, "w");
+        fputs("{\"version\":1,\"screen\":[1280,800],\"macros\":{"
+              "\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"tap\":[\"100 + 140*(track-1)\",300],\"require_change\":true}]},"
+              "\"load_plugin\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"}]}}}", cf);
+        fclose(cf);
+        void *g = E->create(d2);
+        E->set_param(g, "agent", "On");
+        fake.nq = 1; fake.qi = 0; fake.code = 200;
+        snprintf(fake.queue[0], sizeof fake.queue[0], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Loading 9W9 on track 2 and opening its filter.\"},"
+            "{\"functionCall\":{\"name\":\"load_plugin\",\"args\":{\"track\":2,\"plugin\":\"9W9\"}}},{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":0,\"value\":0.5}}}]}}]}");
+        E->set_param(g, "prompt", "put 9w9 on track 2");
+        for (int i = 0; i < 400 && !strncmp(get(g, "status"), "THINKING", 8); i++) usleep(10000);
+        CHECK(!strcmp(get(g, "status"), "PLAN 2 STEPS: press RUN"), "plan with a device tool: '%s'", get(g, "status"));
+        CHECK(strstr(get(g, "plan"), "1 load 9W9 on track 2") && strstr(get(g, "plan"), "2 set Profit-8 Cutoff to 50%"), "plan lines '%s'", get(g, "plan"));
+        CHECK(strstr(fake.body, "load_plugin") && strstr(fake.body, "select_track"), "the model was offered the device tools");
+        snprintf(fake.queue[1], sizeof fake.queue[1], "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"found\\\":true,\\\"point\\\":[500,500]}\"}]}}]}");
+        fake.nq = 2; int vp = fake.posts;
+        E->set_param(g, "run", "1");
+        for (int i = 0; i < 600 && strncmp(get(g, "status"), "RAN", 3) && strncmp(get(g, "status"), "ERROR", 5); i++) usleep(10000);
+        CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS"), "device run: '%s'", get(g, "status"));
+        CHECK(fake.posts == vp + 1 && strstr(fake.body, "image/png") && strstr(fake.body, "reads: 9W9"), "one vision request with the screenshot: %.120s", fake.body);
+        E->destroy(g);
+
+        /* second case: the track cell does not react (a stale coordinate): the run stops, the later set never happens */
+        snprintf(p1, sizeof p1, "%s/macros.json", d2);
+        cf = fopen(p1, "w");
+        fputs("{\"version\":1,\"screen\":[1280,800],\"macros\":{\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"tap\":[50,750],\"require_change\":true}]}}}", cf); fclose(cf);
+        g = E->create(d2); E->set_param(g, "agent", "On");
+        fake.nq = 1; fake.qi = 0;
+        snprintf(fake.queue[0], sizeof fake.queue[0], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"select_track\",\"args\":{\"track\":3}}},{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":1,\"value\":0.9}}}]}}]}");
+        E->set_param(g, "prompt", "select track 3 and open the resonance");
+        for (int i = 0; i < 400 && !strncmp(get(g, "status"), "THINKING", 8); i++) usleep(10000);
+        E->set_param(g, "run", "1");
+        for (int i = 0; i < 600 && strncmp(get(g, "status"), "RAN", 3) && strncmp(get(g, "status"), "ERROR", 5); i++) usleep(10000);
+        CHECK(!strncmp(get(g, "status"), "ERROR RAN 0 of 2: select_track", 31) || strstr(get(g, "status"), "RAN 0 of 2"), "stale tap stops the run: '%s'", get(g, "status"));
+        E->destroy(g);
+        close(ci[1]); close(ri[1]);
+        char cl[3000] = "", rl[3000] = ""; while (fgets(l1, sizeof l1, cso)) strncat(cl, l1, sizeof cl - strlen(cl) - 1); while (fgets(l2, sizeof l2, rso)) strncat(rl, l2, sizeof rl - strlen(rl) - 1);
+        CHECK(strstr(rl, "\"x\":240") && strstr(rl, "\"y\":300") && strstr(rl, "\"x\":640") && strstr(rl, "\"y\":400"), "the screen saw the track tap (240,300) and the found tap (640,400): %s", rl);
+        CHECK(strstr(cl, "\"value\":0.5") && !strstr(cl, "\"value\":0.9"), "the first run's set arrived, the stopped run's did not: %s", cl);
+        fclose(cso); fclose(rso); waitpid(pc, NULL, 0); waitpid(pr, NULL, 0);
+        fake.nq = 0;
+    }
+
     /* the project chunk round-trips the settings */
     E->set_param(a, "type", "Beats"); E->set_param(a, "key", "D#"); E->set_param(a, "scale", "Blues"); E->set_param(a, "bars", "7"); E->set_param(a, "channel", "10");
     char st[64]; snprintf(st, sizeof st, "%s", get(a, "state"));
@@ -184,7 +243,7 @@ int main(void) {
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
     E->destroy(a);
-    CHECK(fake.closed == 5, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 7, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

@@ -57,3 +57,9 @@ void daemon_cap_push(dcap_t *c, const int16_t *in_lr, int frames);   /* stops gr
 int daemon_cap_peak(const dcap_t *c);                                /* 0..32767 over the whole capture */
 /* A 16 kHz mono 16-bit WAV file of the capture; returns bytes (44 + 2n), or -1 if cap is too small. */
 int daemon_cap_wav(const dcap_t *c, uint8_t *out, size_t cap);
+
+/* Vision step for tap macros: a Gemini request asking where `target` is on a screenshot (PNG, base64). The model answers
+ * {found, point:[y, x] in 0..1000, reason}. */
+int daemon_build_vision_request(const char *target, const char *hint, const char *png_b64, int w, int h, char *buf, size_t cap);
+/* Gemini's answer text -> screen pixels. 0 found; -1 not found or unusable (why says which). */
+int daemon_parse_point(const char *text, int w, int h, int *x, int *y, char *why, size_t whycap);

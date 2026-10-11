@@ -138,6 +138,21 @@ int main(void) {
         char ctl[] = "{\"s\":\"a\\u0001b\"}"; jv *c = djson_parse(ctl, strlen(ctl)); char o3[64]; djson_write(c, o3, sizeof o3);
         CHECK(c != NULL, "control escape parses"); djson_free(c);
     }
+
+    /* vision: request and answer */
+    {
+        static char vr[1 << 14]; int n = daemon_build_vision_request("9W9", "the plugin list \"VST\"", "QUJD", 1280, 800, vr, sizeof vr);
+        CHECK(n > 200 && strstr(vr, "\"data\":\"QUJD\"") && strstr(vr, "reads: 9W9") && strstr(vr, "1280x800") && strstr(vr, "Never guess"), "vision request %d", n);
+        FILE *vf = fopen("/tmp/daemon_vision_req.json", "w"); fputs(vr, vf); fclose(vf);
+        CHECK(daemon_build_vision_request("x", "", "QUJD", 1, 1, vr, 100) == -1, "small vision buffer");
+        int px = -1, py = -1; char why[120];
+        CHECK(daemon_parse_point("{\"found\":true,\"point\":[500,250],\"reason\":\"tile\"}", 1280, 800, &px, &py, why, sizeof why) == 0 && px == 320 && py == 400, "point -> %d,%d", px, py);
+        CHECK(daemon_parse_point("{\"found\":true,\"point\":[1000,1000]}", 1280, 800, &px, &py, why, sizeof why) == 0 && px == 1279 && py == 799, "edge point clamps to the last pixel: %d,%d", px, py);
+        CHECK(daemon_parse_point("{\"found\":false,\"reason\":\"two tiles say 9W9\"}", 1280, 800, &px, &py, why, sizeof why) == -1 && !strcmp(why, "two tiles say 9W9"), "not found: '%s'", why);
+        CHECK(daemon_parse_point("{\"found\":true,\"point\":[5000,10]}", 1280, 800, &px, &py, why, sizeof why) == -1 && strstr(why, "outside"), "out of range: '%s'", why);
+        CHECK(daemon_parse_point("{\"found\":true}", 1280, 800, &px, &py, why, sizeof why) == -1 && strstr(why, "no usable point"), "no point: '%s'", why);
+        CHECK(daemon_parse_point("sorry", 1280, 800, &px, &py, why, sizeof why) == -1, "not json: '%s'", why);
+    }
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }
