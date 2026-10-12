@@ -8,9 +8,9 @@
 #include <string.h>
 
 static const char *READ_ONLY[] = { "get_project", "list_plugins", "get_plugin_params" };
-static const char *MUTATING[] = { "set_param", "transport", "play_part", "select_track", "load_plugin" };
+static const char *MUTATING[] = { "set_param", "transport", "play_part", "select_track", "load_plugin", "import_clip" };
 int agent_tool_is_read_only(const char *n) { for (int i = 0; i < 3; i++) if (!strcmp(n, READ_ONLY[i])) return 1; return 0; }
-int agent_tool_is_ui(const char *n) { return !strcmp(n, "select_track") || !strcmp(n, "load_plugin"); }
+int agent_tool_is_ui(const char *n) { return !strcmp(n, "select_track") || !strcmp(n, "load_plugin") || !strcmp(n, "import_clip"); }
 int agent_tool_known(const char *n) { if (agent_tool_is_read_only(n)) return 1; for (int i = 0; i < 5; i++) if (!strcmp(n, MUTATING[i])) return 1; return 0; }
 
 /* ---- history ---- */
@@ -68,7 +68,8 @@ static const char *TOOLS =
  ;
 static const char *TOOLS_UI =
  ",{\"name\":\"select_track\",\"description\":\"Select a track on the MPC's screen by touching it (a recorded sequence of touches). Needed before anything that works on the selected track.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}},"
- "{\"name\":\"load_plugin\",\"description\":\"Load a plugin as the instrument of a track, finding it in the MPC's plugin browser by name. Selects the track itself.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}}";
+ "{\"name\":\"load_plugin\",\"description\":\"Load a plugin as the instrument of a track, finding it in the MPC's plugin browser by name. Selects the track itself.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}},"
+ "{\"name\":\"import_clip\",\"description\":\"Save the part Daemon has made (after play_part) as a MIDI file and load it into the first empty clip slot of a track in the clip matrix, by touching the screen. The track number is the musician's, counted from 1.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
 static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
@@ -187,6 +188,7 @@ int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
     if (!strcmp(call->name, "set_param")) snprintf(out, cap, "set %s %s to %.0f%%", plug[0] ? plug : "plugin", pname[0] ? pname : "parameter", djson_num(a, "value", 0) * 100);
     else if (!strcmp(call->name, "transport")) snprintf(out, cap, "press %s", djson_str(a, "cmd", "?"));
     else if (!strcmp(call->name, "select_track")) snprintf(out, cap, "select track %d", (int)djson_num(a, "track", 0));
+    else if (!strcmp(call->name, "import_clip")) snprintf(out, cap, "clip into track %d", (int)djson_num(a, "track", 0));
     else if (!strcmp(call->name, "load_plugin")) snprintf(out, cap, "load %s on track %d", djson_str(a, "plugin", "?"), (int)djson_num(a, "track", 0));
     else if (!strcmp(call->name, "play_part")) snprintf(out, cap, "make a part \"%s\" on channel %d, %d notes", djson_str(a, "name", "daemon"), (int)djson_num(a, "channel", 2), djson_len(djson_get(a, "notes")));
     else snprintf(out, cap, "%s", call->name);

@@ -1,0 +1,231 @@
+{
+ "version": 1,
+ "screen": [
+  1280,
+  800
+ ],
+ "fingerprints": {
+  "matrix": {
+   "region": [
+    0,
+    500,
+    1160,
+    235
+   ],
+   "thumb": "212121211d1d1d1d1d1d1d1d1d1d1d1d212121211d1d1d1d1d1d1d1d1d1d1d1d1f1f1f1f1c1c1c1c1c1c1c1c1c1c1c1c212121211d1d1d1d1d1d1d1d1d1d1d1d212121211d1d1d1d1d1d1d1d1d1d1d1d1f1f1f1f1c1c1c1c1c1c1c1c1c1c1c1c212121211d1d1d1d1d1d1d1d1d1d1d1d1f1f1f1f1c1c1c1c1c1c1c1c1c1c1c1c",
+   "tolerance": 10
+  },
+  "matrix_bar": {
+   "region": [
+    0,
+    738,
+    1280,
+    62
+   ],
+   "thumb": "020000000000000000000000000000000b000000000000000000000000000000010000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "tolerance": 10
+  },
+  "empty_slot": {
+   "region": [
+    167,
+    432,
+    100,
+    50
+   ],
+   "thumb": "2121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121",
+   "tolerance": 5
+  },
+  "browser": {
+   "region": [
+    450,
+    120,
+    400,
+    70
+   ],
+   "thumb": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d411d1d3f1d1d291d1d1d1d1d1d1d1d1d44491d45525b61241d1d1d1d1d1d1d1d481d1d34685d382b1d1d1d1d1d1d1d1d1d1d1d38403337201d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+   "tolerance": 12
+  },
+  "browser_user": {
+   "region": [
+    60,
+    38,
+    360,
+    30
+   ],
+   "thumb": "1717171717171717171717171717171717281717291717171717171717171717242820172017171717171717171717172c28393c2217171717171717171717172c2829372017171717171717171717172c283c432017171717171717171717172c292b282017171717171717171717171f323a34201717171717171717171717",
+   "tolerance": 2.5
+  },
+  "browser_daemon": {
+   "region": [
+    60,
+    38,
+    360,
+    30
+   ],
+   "thumb": "1717171717171717171717171717171717281717291717171717171717171717242820172b34171717171717171717172c28393c2a30374a392b1717171717172c2829372820343133201717171717172c283c4328324b30321f1717171717172c292b28282b2930321f1717171717171f323a34263d4223361b171717171717",
+   "tolerance": 2.5
+  }
+ },
+ "macros": {
+  "import_clip": {
+   "params": {
+    "track": {
+     "type": "int",
+     "min": 1,
+     "max": 16
+    },
+    "folder": {
+     "type": "string"
+    }
+   },
+   "steps": [
+    {
+     "press": "MATRIX"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "expect": "matrix"
+    },
+    {
+     "expect": "matrix_bar"
+    },
+    {
+     "tap": [
+      "72 + 145*(track-1)",
+      45
+     ],
+     "require_change": false,
+     "label": "track header"
+    },
+    {
+     "find_empty": {
+      "origin": [
+       "72 + 145*(track-1)",
+       220
+      ],
+      "step": [
+       0,
+       79
+      ],
+      "size": [
+       100,
+       50
+      ],
+      "count": 8,
+      "like": "empty_slot"
+     },
+     "require_change": false,
+     "label": "first empty clip slot"
+    },
+    {
+     "press": "MENU"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "tap": [
+      416,
+      170
+     ],
+     "require_change": true,
+     "label": "BROWSER"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "expect": "browser"
+    },
+    {
+     "repeat": 8,
+     "steps": [
+      {
+       "tap": [
+        44,
+        54
+       ],
+       "require_change": false,
+       "label": "folder up"
+      },
+      {
+       "wait": 120
+      }
+     ]
+    },
+    {
+     "wait_stable": 1000
+    },
+    {
+     "scroll": [
+      850,
+      400
+     ],
+     "direction": "up",
+     "amount": 800
+    },
+    {
+     "wait": 300
+    },
+    {
+     "expect": "browser_user"
+    },
+    {
+     "double_tap": [
+      524,
+      334
+     ],
+     "require_change": true,
+     "label": "first row: the newest folder, Daemon"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "expect": "browser_daemon"
+    },
+    {
+     "tap": [
+      626,
+      215
+     ],
+     "require_change": false,
+     "label": "MIDI file filter"
+    },
+    {
+     "wait": 500
+    },
+    {
+     "tap": [
+      580,
+      334
+     ],
+     "require_change": true,
+     "label": "newest file"
+    },
+    {
+     "tap": [
+      1172,
+      770
+     ],
+     "require_change": false,
+     "label": "LOAD into the selected slot"
+    },
+    {
+     "wait": 1000
+    },
+    {
+     "press": "MATRIX"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "expect": "matrix"
+    }
+   ]
+  }
+ }
+}

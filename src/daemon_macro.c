@@ -55,7 +55,7 @@ static int eval_jv(jv *v, const char **names, const double *vals, int n, double 
 }
 
 /* ---- validation ---- */
-static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "call", "repeat", "expect", NULL };
+static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "find_empty", "call", "repeat", "expect", NULL };
 static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", NULL };
 static int in_list(const char *k, const char **l) { for (; *l; l++) if (!strcmp(k, *l)) return 1; return 0; }
 
@@ -80,6 +80,12 @@ static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, siz
         if ((c = djson_get(s, "scroll")) != NULL && (c->t != 'a' || djson_len(c) != 2 || !djson_get(s, "direction"))) { snprintf(err, cap, "macro %s step %d: scroll needs [x, y] and a direction", macro, i + 1); return -1; }
         if ((c = djson_get(s, "expect")) != NULL) {
             if (c->t != 's' || !djson_get(djson_get(m->root, "fingerprints"), c->str)) { snprintf(err, cap, "macro %s step %d: expects an unknown fingerprint", macro, i + 1); return -1; }
+        }
+        if ((c = djson_get(s, "find_empty")) != NULL) {
+            jv *o = djson_get(c, "origin"), *st = djson_get(c, "step"), *sz = djson_get(c, "size"); const char *like = djson_str(c, "like", "");
+            int n = (int)djson_num(c, "count", 0);
+            if (c->t != 'o' || !o || djson_len(o) != 2 || !st || djson_len(st) != 2 || !sz || djson_len(sz) != 2 || n < 1 || n > 16 || (int)djson_at(sz, 0)->num < 4 || (int)djson_at(sz, 1)->num < 4) { snprintf(err, cap, "macro %s step %d: find_empty needs origin [x, y], step [dx, dy], size [w, h] and a count of 1 to 16", macro, i + 1); return -1; }
+            if (!djson_get(djson_get(m->root, "fingerprints"), like)) { snprintf(err, cap, "macro %s step %d: find_empty is like an unknown fingerprint", macro, i + 1); return -1; }
         }
         if ((c = djson_get(s, "repeat")) != NULL) { if (check_steps(m, djson_get(s, "steps"), macro, err, cap, depth + 1)) return -1; }
     }
@@ -208,6 +214,20 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
             int rc = r->vision(r->user, target, hint, png, r->sw, r->sh, &x, &y, why, sizeof why); free(png);
             if (rc < 0) return fail(r, "could not find on screen: %.160s", why[0] ? why : target, i, macro);
             if (touch(r, "tap", x, y, s, macro, i, 1)) return -1;      /* a found target must do something, unless the step says otherwise */
+        } else if ((a = djson_get(s, "find_empty"))) {
+            /* the first of `count` cells (centres origin + k*step) that looks like the stored "empty cell" fingerprint, by brightness only */
+            jv *o = djson_get(a, "origin"), *st = djson_get(a, "step"), *sz = djson_get(a, "size"); double ox, oy, dx, dy;
+            jv *f = djson_get(djson_get(r->m->root, "fingerprints"), djson_str(a, "like", "")); uint8_t want[FP_BYTES], got[FP_BYTES]; fp_unhex(djson_str(f, "thumb", ""), want);
+            if (eval_jv(djson_at(o, 0), r->names, r->vals, r->np, &ox) || eval_jv(djson_at(o, 1), r->names, r->vals, r->np, &oy) || eval_jv(djson_at(st, 0), r->names, r->vals, r->np, &dx) || eval_jv(djson_at(st, 1), r->names, r->vals, r->np, &dy)) return fail(r, "%s", "bad coordinate expression", i, macro);
+            int cw = (int)djson_at(sz, 0)->num, ch = (int)djson_at(sz, 1)->num, n = (int)djson_num(a, "count", 1), hit = -1; double tol = djson_num(f, "tolerance", 12); char e2[160] = "";
+            for (int k = 0; k < n && hit < 0; k++) {
+                int cx = (int)lround(ox + k * dx), cy = (int)lround(oy + k * dy), x0 = cx - cw / 2, y0 = cy - ch / 2;
+                if (x0 < 0 || y0 < 0 || x0 + cw > r->sw || y0 + ch > r->sh) break;       /* ran off the screen: stop looking */
+                if (fp_capture(r->mcp, x0, y0, cw, ch, got, e2, sizeof e2)) return fail(r, "could not check the screen: %.120s", e2, i, macro);
+                if (fp_distance(want, got) <= tol) hit = k;
+            }
+            if (hit < 0) return fail(r, "%s", "no empty slot among the cells checked", i, macro);
+            if (touch(r, "tap", (int)lround(ox + hit * dx), (int)lround(oy + hit * dy), s, macro, i, 1)) return -1;
         } else if ((a = djson_get(s, "expect"))) {
             jv *f = djson_get(djson_get(r->m->root, "fingerprints"), a->str); jv *rg = djson_get(f, "region"); uint8_t want[FP_BYTES], got[FP_BYTES];
             double tol = djson_num(f, "tolerance", 12), dist = 1e9; fp_unhex(djson_str(f, "thumb", ""), want);

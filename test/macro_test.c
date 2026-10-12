@@ -94,6 +94,19 @@ int main(void) {
             CHECK(macro_run(fm, mcp, "wrong", "{}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "does not look like \"pageB\"") && strstr(res, "difference"), "expect stops on the wrong screen: %s", res);
             macros_free(fm);
         }
+        /* find_empty: cells 40 px apart on the fake screen A (vertical 40 px stripes) alternate dark and light; "like" a light cell is first met at cell 1 */
+        {
+            uint8_t tl[FP_BYTES]; char hl[FP_BYTES * 2 + 1], js2[3000];
+            fp_capture(mcp, 40, 300, 40, 40, tl, e2, sizeof e2); fp_hex(tl, hl);
+            snprintf(js2, sizeof js2, "{\"version\":1,\"screen\":[1280,800],\"fingerprints\":{\"light\":{\"region\":[40,300,40,40],\"thumb\":\"%s\",\"tolerance\":6}},\"macros\":{"
+                "\"first_light\":{\"steps\":[{\"find_empty\":{\"origin\":[20,320],\"step\":[40,0],\"size\":[36,36],\"count\":6,\"like\":\"light\"}}]},"
+                "\"none\":{\"steps\":[{\"find_empty\":{\"origin\":[20,320],\"step\":[80,0],\"size\":[36,36],\"count\":4,\"like\":\"light\"}}]}}}", hl);
+            macros_t *fe = macros_parse(js2, err, sizeof err); CHECK(fe != NULL, "find_empty file: %s", err); if (fe) {
+                CHECK(macro_run(fe, mcp, "first_light", "{}", NULL, NULL, res, sizeof res) == 0, "find_empty finds the first matching cell: %s", res);
+                CHECK(macro_run(fe, mcp, "none", "{}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "no empty slot"), "find_empty with no match stops: %s", res);
+                macros_free(fe);
+            }
+        }
         const char *badfp[][2] = {
             { "\"fingerprints\":[],\"macros\":{\"a\":{\"steps\":[{\"wait\":1}]}}", "must be an object" },
             { "\"fingerprints\":{\"x\":{\"region\":[0,0,2000,100],\"thumb\":\"00\"}},\"macros\":{\"a\":{\"steps\":[{\"wait\":1}]}}", "inside the 1280x800 screen" },
@@ -109,6 +122,7 @@ int main(void) {
 
     close(in[1]); char log[8000] = ""; while (fgets(line, sizeof line, so)) strncat(log, line, sizeof log - strlen(log) - 1);
     CHECK(strstr(log, "CALL tap {\"screenshot\":\"none\",\"x\":380,\"y\":300}"), "track 3 cell tapped at 380,300");
+    CHECK(strstr(log, "CALL tap {\"screenshot\":\"none\",\"x\":60,\"y\":320}"), "find_empty tapped the centre of the first light cell (60,320)");
     CHECK(strstr(log, "CALL press_button {\"name\":\"MENU\",\"screenshot\":\"none\"}"), "button pressed");
     CHECK(strstr(log, "CALL tap {\"screenshot\":\"none\",\"x\":777,\"y\":333}"), "the found plugin was tapped where the vision step said");
     CHECK(strstr(log, "CALL scroll {\"amount\":2,\"direction\":\"down\",\"screenshot\":\"none\",\"x\":300,\"y\":400}"), "scroll");

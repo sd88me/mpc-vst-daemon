@@ -106,11 +106,22 @@ static int vision_gemini(void *u, const char *target, const char *hint, const ch
 }
 
 /* select_track / load_plugin: the macro of the same name, on the remote addin's MCP */
+static int save_mid(dm_t *d);
 static int ui_cb(void *u, const char *tool, const char *args, char *res, size_t cap) {
     uictx *c = u; dm_t *d = c->d;
     if (!d->macros || !macros_has(d->macros, tool)) { snprintf(res, cap, "no macro %s is recorded on this device", tool); return -1; }
+    char margs[200]; const char *use = args;
+    if (!strcmp(tool, "import_clip")) {          /* save the part, then the macro goes User > <folder> > its newest file */
+        const char *sy = strstr(d->dir, "/Synths/"); char root[256] = ""; if (sy) snprintf(root, sizeof root, "%.*s", (int)(sy - d->dir), d->dir);
+        size_t rl = strlen(root); const char *folder = root[0] && !strncmp(d->clips_dir, root, rl) && d->clips_dir[rl] == '/' ? d->clips_dir + rl + 1 : NULL;
+        if (!folder || !folder[0] || strchr(folder, '/') || strlen(folder) > 60) { snprintf(res, cap, "import_clip needs clips_dir to be a folder directly on the drive, such as Daemon"); return -1; }
+        jv *aj = djson_parse(args, strlen(args)); int track = aj ? (int)djson_num(aj, "track", 0) : 0; djson_free(aj);
+        pthread_mutex_lock(&d->mu); int sv = save_mid(d); pthread_mutex_unlock(&d->mu);
+        if (sv < 0) { snprintf(res, cap, "there is no part to import: make one with play_part first"); return -1; }
+        snprintf(margs, sizeof margs, "{\"track\":%d,\"folder\":\"%s\"}", track, folder); use = margs;
+    }
     if (!c->mcp) { char err[120]; c->mcp = mcp_open(c->s->host_remote, c->s->port_remote, err, sizeof err); if (!c->mcp) { snprintf(res, cap, "%s", err); return -1; } }
-    return macro_run(d->macros, c->mcp, tool, args, vision_gemini, c, res, cap);
+    return macro_run(d->macros, c->mcp, tool, use, vision_gemini, c, res, cap);
 }
 
 static void publish_error(dm_t *d, const char *fmt, const char *a) { pthread_mutex_lock(&d->mu); set_status(d, S_ERROR, fmt, a); pthread_mutex_unlock(&d->mu); }
