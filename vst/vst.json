@@ -25,7 +25,8 @@
   ],
   "libs": [
    "-lm",
-   "-ldl"
+   "-ldl",
+   "-lpthread"
   ]
  },
  "defines": {
