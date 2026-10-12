@@ -332,6 +332,7 @@ static void *create(const char *data_dir) {
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
     kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
     d->kbd = kbd_start(d->input_dir, d->input_test, cb);
+    { char lp[300]; snprintf(lp, sizeof lp, "%s/kbd.log", d->dir); remove(lp); kbd_set_log(d->kbd, lp); }
     pthread_create(&d->th_drop, NULL, drop_watch, d); d->drop_up = 1;
     return d;
 }

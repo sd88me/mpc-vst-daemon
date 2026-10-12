@@ -41,8 +41,18 @@ int kbd_key(kbd_line *l, int code, int value) {
 struct kbd {
     char dir[160]; int test_dir; kbd_cb cb;
     pthread_t th; pthread_mutex_t mu; pthread_cond_t cv; int armed, quit;
-    int fd[MAXDEV]; char name[MAXDEV][64]; int n;
+    int fd[MAXDEV]; char name[MAXDEV][64]; int n; char logpath[300]; char seen[MAXDEV * 4][64]; int nseen;
 };
+
+/* One line per device per outcome (not per rescan) in kbd.log, so a keyboard that never types can be diagnosed from the device. */
+static void note(kbd_t *k, const char *node, const char *what) {
+    if (!k->logpath[0]) return;
+    char key[64]; snprintf(key, sizeof key, "%.20s:%.40s", node, what);
+    for (int i = 0; i < k->nseen; i++) if (!strcmp(k->seen[i], key)) return;
+    if (k->nseen < MAXDEV * 4) snprintf(k->seen[k->nseen++], sizeof k->seen[0], "%s", key);
+    FILE *f = fopen(k->logpath, "a"); if (!f) return; fprintf(f, "%s: %s\n", node, what); fclose(f);
+}
+void kbd_set_log(kbd_t *k, const char *path) { snprintf(k->logpath, sizeof k->logpath, "%s", path); }
 
 #define BITS(n) ((n) / 8 + 1)
 static int is_keyboard(int fd) {
@@ -61,8 +71,12 @@ static void scan(kbd_t *k) {
         if (dup) continue;
         char path[430]; snprintf(path, sizeof path, "%.160s/%.63s", k->dir, e->d_name);
         int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC); if (fd < 0) continue;
-        if (!k->test_dir && !is_keyboard(fd)) { close(fd); continue; }
-        if (!k->test_dir && ioctl(fd, EVIOCGRAB, 1) < 0) { close(fd); continue; }   /* someone else has it: leave it */
+        char nm[96] = "?"; if (!k->test_dir) ioctl(fd, EVIOCGNAME(sizeof nm), nm);
+        if (!k->test_dir && !is_keyboard(fd)) { char m[160]; snprintf(m, sizeof m, "\"%.60s\" not a keyboard", nm); note(k, e->d_name, m); close(fd); continue; }
+        if (!k->test_dir && ioctl(fd, EVIOCGRAB, 1) < 0) {
+            int er = errno; char m[160]; snprintf(m, sizeof m, "\"%.60s\" grab failed: %.40s", nm, strerror(er)); note(k, e->d_name, m);
+            if (er == EBUSY) { close(fd); continue; }       /* someone else has it exclusively: no events would reach us */
+        } else if (!k->test_dir) { char m[160]; snprintf(m, sizeof m, "\"%.60s\" grabbed", nm); note(k, e->d_name, m); }
         snprintf(k->name[k->n], sizeof k->name[0], "%.63s", e->d_name); k->fd[k->n++] = fd;
         if (k->cb.found) k->cb.found(k->cb.user, k->n);
     }
