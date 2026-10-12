@@ -61,9 +61,17 @@ int main(void) {
     int expect = 0; for (int i = 0; i < part.n; i++) for (double t = part.notes[i].start; t < 9.0 + played + 4; t += 4) if (t >= 9.0 && t < 9.0 + played) expect++;
     CHECK(c.on == expect, "mid-song start: %d note-ons, want %d", c.on, expect);
 
-    /* a locate silences what was sounding and resumes without a stuck note */
+    /* a locate silences what was sounding and the part follows the new position (a note at the new spot sounds) */
     daemon_feed(&pl, 100.0, 100.0 + ppb, emit, &c);
-    CHECK(sounding(&c) == 0, "after a locate %d notes still sounding", sounding(&c));
+    CHECK(!c.stuck, "stuck note after a locate");
+    daemon_player_stop(&pl, emit, &c); CHECK(sounding(&c) == 0, "after a locate and stop %d notes still sounding", sounding(&c));
+    /* the host loops its sequence (6 beats, not a multiple of the 4-beat part): the part restarts with the loop, notes at beat 0 sound again */
+    memset(&c, 0, sizeof c); daemon_player_init(&pl, &part); ppq = 0;
+    while (ppq < 6.0) { daemon_feed(&pl, ppq, ppq + ppb, emit, &c); ppq += ppb; }
+    int before = c.on; ppq = 0; int at0 = 0; for (int i = 0; i < part.n; i++) at0 += part.notes[i].start < 1.0;
+    for (int i = 0; i < 100; i++) { daemon_feed(&pl, ppq, ppq + ppb, emit, &c); ppq += ppb; }      /* ~0.35 beat after the wrap */
+    int at_zero = 0; for (int i = 0; i < part.n; i++) at_zero += part.notes[i].start < 0.3;
+    CHECK(c.on - before == at_zero && !c.stuck, "after a loop wrap: %d note-ons, want %d (stuck %d)", c.on - before, at_zero, c.stuck); (void)at0;
     /* tempo jitter: ppqPos stepping back a little must not fire a note twice */
     memset(&c, 0, sizeof c); daemon_player_init(&pl, &part); ppq = 0; int jit = 0;
     for (int i = 0; i < 400; i++) { daemon_feed(&pl, ppq, ppq + ppb, emit, &c); ppq += ppb; if (i % 50 == 49) { ppq -= 0.001; jit++; } }

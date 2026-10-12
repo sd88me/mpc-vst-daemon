@@ -30,6 +30,7 @@ typedef struct {
     const dpart_t *part;
     double unwrapped;                 /* song position since the last resync, in beats */
     int primed;
+    double next;                      /* where the host's position should be at the next block (end of this one) */
     struct { int pitch; double off; } pend[DAEMON_MAX_PENDING];
     int npend;
 } dplayer_t;

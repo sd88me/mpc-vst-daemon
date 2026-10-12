@@ -69,10 +69,14 @@ void daemon_feed(dplayer_t *p, double ppq0, double ppq1, daemon_emit_fn emit, vo
     double adv = ppq1 - ppq0;
     if (adv < 0 || adv > 1.0) {                      /* a locate or a jump: silence, resync at the new position */
         daemon_player_stop(p, emit, user);
-        p->unwrapped = ppq1 < 0 ? 0 : ppq1; p->primed = 1;
+        p->unwrapped = ppq1 < 0 ? 0 : ppq1; p->primed = 1; p->next = ppq1;
         return;
     }
+    if (p->primed && fabs(ppq0 - p->next) > 0.2) {    /* the host looped or located (a small step is tempo jitter: ignore it, time by block length) */
+        daemon_player_stop(p, emit, user);
+    }
     if (!p->primed) { p->unwrapped = ppq0 < 0 ? 0 : ppq0; p->primed = 1; }   /* song bar 1 = beat 0 of the part */
+    p->next = ppq1;
     double u0 = p->unwrapped, u1 = u0 + adv, L = p->part->loop_beats;
     drain_offs(p, u0, emit, user);
     for (int i = 0; i < p->part->n; i++) {
