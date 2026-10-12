@@ -28,13 +28,10 @@ typedef struct {
 
 /* One ALSA client for the whole MPC session. MPC keeps each MIDI port's switches (Global, Control, Track) under the port's client
  * number, which ALSA hands out afresh every time a client is opened; a client re-created on every project load would come back
- * as a new device with its switches off. So the client is opened once and never closed, and this library pins itself in memory
- * (RTLD_NODELETE) so the handle survives the host unloading the plugin. */
+ * as a new device with its switches off. So the client is opened once and never closed. The handle is remembered in the process
+ * environment (DAEMON_ALSA_SEQ=<handle>:<port>), not in this library, so a newer daemon.so can be loaded without a restart. libasound
+ * stays loaded because MPC itself uses it. */
 static midi_t *g_midi;
-static void pin_library(void) {
-    Dl_info di;
-    if (dladdr((void *)pin_library, &di) && di.dli_fname) dlopen(di.dli_fname, RTLD_NOW | RTLD_NODELETE);
-}
 
 static void *midi_open(const char *client, const char *port) {
     if (g_midi) return g_midi;
@@ -44,11 +41,15 @@ static void *midi_open(const char *client, const char *port) {
     m->open_ = dlsym(m->lib, "snd_seq_open"); m->set_name = dlsym(m->lib, "snd_seq_set_client_name");
     m->mk_port = dlsym(m->lib, "snd_seq_create_simple_port"); m->out_direct = dlsym(m->lib, "snd_seq_event_output_direct");
     m->close_ = dlsym(m->lib, "snd_seq_close");
-    if (!m->open_ || !m->set_name || !m->mk_port || !m->out_direct || !m->close_ || m->open_(&m->seq, "default", OPEN_OUTPUT, 0) < 0) { dlclose(m->lib); free(m); return NULL; }
+    if (!m->open_ || !m->set_name || !m->mk_port || !m->out_direct || !m->close_) { dlclose(m->lib); free(m); return NULL; }
+    const char *env = getenv("DAEMON_ALSA_SEQ"); unsigned long h = 0; int pt = -1;
+    if (env && sscanf(env, "%lx:%d", &h, &pt) == 2 && h && pt >= 0) { m->seq = (void *)h; m->port = pt; g_midi = m; return m; }
+    if (m->open_(&m->seq, "default", OPEN_OUTPUT, 0) < 0) { dlclose(m->lib); free(m); return NULL; }
     m->set_name(m->seq, client);
     m->port = m->mk_port(m->seq, port, CAP_READ | CAP_SUBS_READ, PT_MIDI_GENERIC | PT_APPLICATION);
     if (m->port < 0) { m->close_(m->seq); dlclose(m->lib); free(m); return NULL; }
-    pin_library(); g_midi = m;
+    char v[64]; snprintf(v, sizeof v, "%lx:%d", (unsigned long)m->seq, m->port); setenv("DAEMON_ALSA_SEQ", v, 1);
+    g_midi = m;
     return m;
 }
 
