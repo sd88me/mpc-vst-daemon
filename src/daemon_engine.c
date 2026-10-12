@@ -291,7 +291,7 @@ static void *create(const char *data_dir) {
     dm_t *d = calloc(1, sizeof *d);
     pthread_mutex_init(&d->mu, NULL); pthread_cond_init(&d->cv, NULL);
     snprintf(d->dir, sizeof d->dir, "%s", data_dir ? data_dir : ".");
-    d->io = daemon_io(); d->type = 2; d->keyi = 5; d->scale = 1; d->bars = 4; d->channel = 2; d->play = 1;
+    d->io = daemon_io(); d->type = 2; d->keyi = 5; d->scale = 1; d->bars = 4; d->channel = 1; d->play = 1;
     conf_load(d);
     { char mp[300], me[160]; snprintf(mp, sizeof mp, "%s/macros.json", d->dir); d->macros = macros_load(mp, me, sizeof me); }   /* none is fine: the screen tools are then not offered */
     snprintf(d->status, sizeof d->status, "READY"); 

@@ -73,7 +73,7 @@ int main(void) {
     /* playing: 3 notes over a 3-beat part, two passes of the loop, MIDI on channel 2 (index 1), nothing doubled, all ended */
     double ppb = 100 / 60.0 * 128 / 44100.0, ppq = 0; fake.nev = 0;
     while (ppq < 5.9) { E->song_pos(a, ppq, 100, 1, 128); ppq += ppb; }
-    int on = 0, off = 0, badch = 0; for (int i = 0; i < fake.nev; i++) { on += fake.ev[i].on; off += !fake.ev[i].on; badch += fake.ev[i].ch != 1; }
+    int on = 0, off = 0, badch = 0; for (int i = 0; i < fake.nev; i++) { on += fake.ev[i].on; off += !fake.ev[i].on; badch += fake.ev[i].ch != 0; }
     CHECK(on == 6 && off >= 5 && !badch, "6 note-ons over two passes: on %d off %d badch %d", on, off, badch);
     E->song_pos(a, ppq, 100, 0, 128);                    /* transport stops: whatever is sounding ends */
     on = off = 0; for (int i = 0; i < fake.nev; i++) { on += fake.ev[i].on; off += !fake.ev[i].on; }

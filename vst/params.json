@@ -85,7 +85,7 @@
    "name": "Channel",
    "min": 1,
    "max": 16,
-   "default": 2,
+   "default": 1,
    "display": "int"
   },
   {

@@ -32,3 +32,13 @@ GPL-3.0-or-later (see `LICENSE`; every source file carries an SPDX tag). Daemon 
 not linked. If you distribute a modified version, you must make its source available under the same licence.
 
 "Daemon" is a working name, and the licence does not grant any right to the name or branding of the project.
+
+## Using it on a device (verified on a Force, MPC OS 3.9.1, 2026-10-12)
+- Insert Daemon as an effect on an audio track (mic input) and open it once.
+- Its notes leave through a MIDI port of its own, "Daemon MIDI Out". In Preferences > MIDI switch on Global, Control and Track
+  for it, and give the instrument track an input of All Ports. Set Daemon's **Channel** to the channel the instrument listens
+  on (default 1; a JV-880 port heard nothing on 2). The ALSA client stays open for the whole MPC session, so the switches
+  survive project reloads.
+- Typed prompts without a keyboard: write a line to `engine/prompt.txt` (ssh, a file share); Daemon reads and deletes it.
+- `engine/daemon.log` (rewritten twice a second) shows the transport callbacks, notes sent and the last status, for diagnosis.
+- Gemini answers 503/429 under load: Daemon retries three times; pick another `model=` in `engine/daemon.conf` if it persists.
