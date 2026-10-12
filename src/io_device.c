@@ -18,7 +18,7 @@ enum { EV_NOTEON = 6, EV_NOTEOFF = 7, ADDR_SUBSCRIBERS = 254, QUEUE_DIRECT = 253
        CAP_READ = 1, CAP_SUBS_READ = 32, PT_MIDI_GENERIC = 2, PT_APPLICATION = 1 << 20 };
 
 typedef struct {
-    void *lib, *seq; int port;
+    void *lib, *seq; int port; long bad; int last_rc;
     int (*open_)(void **, const char *, int, int);
     int (*set_name)(void *, const char *);
     int (*mk_port)(void *, const char *, unsigned, unsigned);
@@ -46,8 +46,10 @@ static void midi_send(void *h, int ch, int on, int pitch, int vel) {
     e.b[12] = 0; e.b[13] = (uint8_t)m->port;                       /* source: client filled in by the kernel */
     e.b[14] = ADDR_SUBSCRIBERS; e.b[15] = 0;
     e.b[16] = (uint8_t)(ch & 15); e.b[17] = (uint8_t)pitch; e.b[18] = (uint8_t)vel;
-    m->out_direct(m->seq, &e);
+    int rc = m->out_direct(m->seq, &e); m->last_rc = rc; if (rc < 0) m->bad++;
 }
+
+static void midi_stat(void *h, long *bad, int *last_rc) { midi_t *m = h; *bad = m ? m->bad : -1; *last_rc = m ? m->last_rc : 0; }
 
 static void midi_close(void *h) { midi_t *m = h; if (!m) return; m->close_(m->seq); dlclose(m->lib); free(m); }
 
@@ -90,5 +92,5 @@ static int http_post(const char *url, const char *key, const char *body, size_t 
     return code;
 }
 
-static const daemon_io_t IO = { midi_open, midi_send, midi_close, http_post };
+static const daemon_io_t IO = { midi_open, midi_send, midi_close, http_post, midi_stat };
 const daemon_io_t *daemon_io(void) { return &IO; }

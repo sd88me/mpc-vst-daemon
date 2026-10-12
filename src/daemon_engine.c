@@ -273,9 +273,9 @@ static void *drop_watch(void *arg) {
     for (;;) {
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
         { char lp[300]; snprintf(lp, sizeof lp, "%s/daemon.log", d->dir); FILE *lf = fopen(lp, "w");
-          if (lf) { pthread_mutex_lock(&d->mu);
-              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\n",
-                      d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state, d->status);
+          if (lf) { pthread_mutex_lock(&d->mu); long mbad = 0; int mrc = 0; if (d->io->midi_stat && d->midi) d->io->midi_stat(d->midi, &mbad, &mrc);
+              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\nmidi_bad %ld last_rc %d\n",
+                      d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state, d->status, mbad, mrc);
               pthread_mutex_unlock(&d->mu); fclose(lf); } }
         FILE *f = fopen(path, "r"); if (!f) continue;
         char t[256]; size_t n = fread(t, 1, sizeof t - 1, f); fclose(f); unlink(path);
