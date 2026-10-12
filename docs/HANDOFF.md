@@ -39,9 +39,12 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
 - Reading the Gemini key: only inside scripts/ssh pipes, never print it (`/mnt/c/Users/Sam/.gemini_api_key`, or `~/.gemini_api_key`).
 
 ## Not tested on the device yet
-Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), agent plan -> RUN of `import_clip` end to end (the macro itself is verified; the RUN from Daemon's button is not yet), commander transport state (needs MIDI port + Receive MMC),
+Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), commander transport state (needs MIDI port + Receive MMC),
 vision step (`find_tap`). Skin: live text is MPC's own font, not monospace.
 
 ## Before any public release
 Add aarch64 target (Gen2 default per repo policy), create the GitHub repo (ask the user first), catalog entry PR + `catalog_check.py --catalog`, `tested.json`,
 docs/NOTES.md entries in `mpc-vst-plugins` with dates (verified device facts above), optional DCO sign-off, trademark check for the name "Daemon".
+
+## Verified 2026-10-12 (late)
+Typed prompt (remote virtual keyboard) -> agent plan (make part + clip into track 3) -> RUN -> `RAN 2 STEPS`; Dark_Chords.mid saved and the clip appeared on track 3 (a new Drum track) in the clip matrix. Left in the user's project.
