@@ -62,8 +62,11 @@ int main(void) {
     { char tiny[500]; CHECK(agent_build_request(&ctx, &h, tiny, sizeof tiny) == -1, "small request buffer"); }
     FILE *f = fopen("/tmp/daemon_agent_req.json", "w"); fputs(req, f); fclose(f);
     CHECK(strstr(req, "\"functionResponse\"") && strstr(req, "not run") && strstr(req, "SIG==") && strstr(req, "inline_data"), "request pieces");
-    { actx_t with = { 124, "F Minor", 4, "", 1 }; static char r2[1 << 20]; agent_build_request(&with, &h, r2, sizeof r2);
-      CHECK(strstr(r2, "\"load_plugin\"") && strstr(r2, "\"select_track\"") && !strstr(req, "\"load_plugin\""), "device tools are in the request only when has_ui"); }
+    { actx_t with = { 124, "F Minor", 4, "", 7, 3 }; static char r2[1 << 20]; agent_build_request(&with, &h, r2, sizeof r2);
+      CHECK(strstr(r2, "\"load_plugin\"") && strstr(r2, "\"select_track\"") && strstr(r2, "\"import_clip\"") && !strstr(req, "\"load_plugin\"") && !strstr(req, "\"import_clip\""), "device tools are in the request only when has_ui");
+      CHECK(strstr(r2, "MIDI channel is set to 3"), "the model is told the channel setting");
+      actx_t only = { 124, "F Minor", 4, "", 4, 0 }; static char r3[1 << 20]; agent_build_request(&only, &h, r3, sizeof r3);
+      CHECK(strstr(r3, "\"import_clip\"") && !strstr(r3, "\"select_track\"") && !strstr(r3, "\"load_plugin\""), "only the screen tools whose macro exists are offered"); }
     agent_hist_free(&h);
 
     /* running tools against the fake commander */

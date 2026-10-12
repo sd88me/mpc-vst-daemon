@@ -66,25 +66,27 @@ static const char *TOOLS =
  "{\"name\":\"play_part\",\"description\":\"Make a MIDI part and loop it from Daemon's own MIDI port, in time with the MPC transport. Notes use beats from the start of the part.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{"
    "\"name\":{\"type\":\"STRING\"},\"channel\":{\"type\":\"INTEGER\"},\"notes\":{\"type\":\"ARRAY\",\"description\":\"each note is [pitch, start_time, duration, velocity]\",\"items\":{\"type\":\"ARRAY\",\"items\":{\"type\":\"NUMBER\"}}}},\"required\":[\"notes\"]}}"
  ;
-static const char *TOOLS_UI =
- ",{\"name\":\"select_track\",\"description\":\"Select a track on the MPC's screen by touching it (a recorded sequence of touches). Needed before anything that works on the selected track.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}},"
- "{\"name\":\"load_plugin\",\"description\":\"Load a plugin as the instrument of a track, finding it in the MPC's plugin browser by name. Selects the track itself.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}},"
- "{\"name\":\"import_clip\",\"description\":\"Save the part Daemon has made (after play_part) as a MIDI file and load it into the first empty clip slot of a track in the clip matrix, by touching the screen. The track number is the musician's, counted from 1.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
+static const char *TOOL_SELECT =
+ ",{\"name\":\"select_track\",\"description\":\"Select a track on the MPC's screen by touching it (a recorded sequence of touches). Needed before anything that works on the selected track.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
+static const char *TOOL_LOAD =
+ ",{\"name\":\"load_plugin\",\"description\":\"Load a plugin as the instrument of a track, finding it in the MPC's plugin browser by name. Selects the track itself.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}}";
+static const char *TOOL_IMPORT =
+ ",{\"name\":\"import_clip\",\"description\":\"Save the part Daemon has made (after play_part) as a MIDI file and load it into the first empty clip slot of a track in the clip matrix, by touching the screen. The track number is the musician's, counted from 1.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
 static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
-    char sys[3000];
+    char sys[4200];
     snprintf(sys, sizeof sys,
         "You help a musician run an Akai MPC by voice or text. You can read the project and plugins, set plugin parameters, press transport buttons and make MIDI parts, all through the tools. "
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading a plugin onto a track is only possible when the load_plugin tool exists; otherwise say you cannot. Selecting or loading touches the screen and is slow, so do it only when asked. "
+        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_plugin, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading a plugin onto a track is only possible when the load_plugin tool exists; otherwise say you cannot. Selecting or loading touches the screen and is slow, so do it only when asked. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
-        ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
+        ctx->channel > 0 ? ctx->channel : 1, ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
     size_t n = 0; int w;
-    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s%s%s,\"contents\":[", s, TOOLS, ctx->has_ui ? TOOLS_UI : "", TOOLS_END); free(s);
+    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s%s%s%s%s,\"contents\":[", s, TOOLS, (ctx->has_ui & 1) ? TOOL_SELECT : "", (ctx->has_ui & 2) ? TOOL_LOAD : "", (ctx->has_ui & 4) ? TOOL_IMPORT : "", TOOLS_END); free(s);
     if (w < 0 || (size_t)w >= cap) return -1;
     n = (size_t)w;
     for (int i = 0; i < h->n; i++) {

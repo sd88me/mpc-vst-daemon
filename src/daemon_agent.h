@@ -23,7 +23,7 @@ int agent_hist_model(ahist_t *h, const aturn_t *t);                             
 /* The results of the calls in t (results[i] is JSON text for t->calls[i]); skipped calls pass NULL and are answered "not run". */
 int agent_hist_results(ahist_t *h, const aturn_t *t, const char *const *results);
 
-typedef struct { double bpm; const char *scale; int bars; const char *typed_context; int has_ui; } actx_t;   /* has_ui: select_track and load_plugin are offered */
+typedef struct { double bpm; const char *scale; int bars; const char *typed_context; int has_ui; int channel; } actx_t;   /* has_ui: bits 1 select_track, 2 load_plugin, 4 import_clip are offered; channel: Daemon's MIDI channel setting */
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap);
 int agent_parse_turn(const char *response, aturn_t *t);        /* 0 ok; -1: t->text holds the API error or why there is no turn */
 void agent_turn_free(aturn_t *t);

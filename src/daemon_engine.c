@@ -71,7 +71,7 @@ static void conf_load(dm_t *d) {
 
 
 /* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
-typedef struct { char typed[256]; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; } snap_t;
+typedef struct { char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; } snap_t;
 typedef struct { dm_t *d; const snap_t *s; mcp_t *mcp; } uictx;       /* what the tool callbacks get */
 
 static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
@@ -131,7 +131,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
     agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
-    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", d->macros != NULL };
+    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_plugin") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0), s->channel };
     uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
     int done = 0;
@@ -209,7 +209,7 @@ static void *worker(void *arg) {
         d->pending = 0; int mode = d->mode;
         dreq_t rq = { TYPES[d->type], "", "gm", d->bpm > 0 ? d->bpm : 120, d->bars };
         char scale[48]; snprintf(scale, sizeof scale, "%s %s", KEYS[d->keyi], SCALES[d->scale]); rq.scale = scale;
-        char typed[256]; snprintf(typed, sizeof typed, "%s", d->typed);
+        char typed[256]; snprintf(typed, sizeof typed, "%s", d->typed); int ch_snap = d->channel;
         int audio = d->with_audio && d->have_audio, wl = 0;
         if (audio) wl = daemon_cap_wav(&d->cap, wav, 44 + DAEMON_CAP_MAX * 2);
         char key[128], url[300]; snprintf(key, sizeof key, "%s", d->key);
@@ -218,7 +218,7 @@ static void *worker(void *arg) {
 
         if (mode == 2 || mode == 3) {
             snap_t sn; memset(&sn, 0, sizeof sn);
-            snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
+            sn.channel = ch_snap; snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
             snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port; snprintf(sn.host_remote, sizeof sn.host_remote, "%s", d->remote_host); sn.port_remote = d->remote_port;
             if (mode == 2) agent_plan(d, &sn, body, resp); else agent_run(d, &sn);
             pthread_mutex_lock(&d->mu);
