@@ -40,6 +40,7 @@ typedef struct {
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
     aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
     macros_t *macros; char remote_host[48]; int remote_port;
+    long sp_calls, sp_busy, sp_playing, n_on, n_off; double last_ppq, last_bpm;    /* diagnostics, written to engine/daemon.log */
 } dm_t;
 
 static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
@@ -267,6 +268,11 @@ static void *drop_watch(void *arg) {
     dm_t *d = arg; char path[300]; snprintf(path, sizeof path, "%s/prompt.txt", d->dir);
     for (;;) {
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
+        { char lp[300]; snprintf(lp, sizeof lp, "%s/daemon.log", d->dir); FILE *lf = fopen(lp, "w");
+          if (lf) { pthread_mutex_lock(&d->mu);
+              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\n",
+                      d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state);
+              pthread_mutex_unlock(&d->mu); fclose(lf); } }
         FILE *f = fopen(path, "r"); if (!f) continue;
         char t[256]; size_t n = fread(t, 1, sizeof t - 1, f); fclose(f); unlink(path);
         while (n && (t[n - 1] == '\n' || t[n - 1] == '\r' || t[n - 1] == ' ')) n--;
@@ -417,12 +423,14 @@ static void process(void *inst, const int16_t *in, int16_t *out, int frames) {
 
 static void emit(void *u, int on, int pitch, int vel) {
     dm_t *d = u;
+    if (on) d->n_on++; else d->n_off++;
     if (d->midi) d->io->midi_send(d->midi, d->channel - 1, on, pitch, vel);
 }
 
 static void song_pos(void *inst, double ppq, double bpm, int playing, int frames) {
     dm_t *d = inst;
-    if (pthread_mutex_trylock(&d->mu)) return;
+    if (pthread_mutex_trylock(&d->mu)) { d->sp_busy++; return; }
+    d->sp_calls++; d->sp_playing += playing != 0; d->last_ppq = ppq; d->last_bpm = bpm;
     if (bpm > 0) d->bpm = bpm;
     if (d->pl_gen != d->part_gen || d->pl.part != &d->part) {          /* a new part (or play toggled): silence the old one */
         daemon_player_stop(&d->pl, emit, d);
