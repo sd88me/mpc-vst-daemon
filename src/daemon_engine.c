@@ -8,6 +8,7 @@
 #include "daemon_core.h"
 #include "daemon_io.h"
 #include "daemon_kbd.h"
+#include <time.h>
 #include "daemon_agent.h"
 #include "daemon_json.h"
 #include "daemon_macro.h"
@@ -36,7 +37,7 @@ typedef struct {
     dcap_t cap; int have_audio;
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
-    kbd_t *kbd; int kbd_devs;
+    kbd_t *kbd; int kbd_devs; struct timespec press_at[3];
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
     aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
     macros_t *macros; char remote_host[48]; int remote_port;
@@ -380,8 +381,23 @@ static int save_mid(dm_t *d) {                         /* d->mu held */
     return w == (size_t)len ? 0 : -1;
 }
 
+/* A momentary button reaches set_param with "on" more than once per press (seen on the Force: one TALK tap = LISTENING then the "heard nothing"
+ * error, TYPE armed then disarmed). Ignore a repeat of the same button within 400 ms. */
+static int repeat_press(struct timespec *last, const char *k) {
+    static const char *const names[3] = { "talk", "typing", "run" };
+    if (getenv("DAEMON_NO_DEBOUNCE")) return 0;   /* tests press the same button twice in a row */
+    struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+    for (int i = 0; i < 3; i++) if (!strcmp(k, names[i])) {
+        long ms = (now.tv_sec - last[i].tv_sec) * 1000 + (now.tv_nsec - last[i].tv_nsec) / 1000000;
+        if (last[i].tv_sec && ms < 400) return 1;
+        last[i] = now; return 0;
+    }
+    return 0;
+}
+
 static void set_param(void *inst, const char *k, const char *v) {
     dm_t *d = inst; int on = atof(v) > 0.5;
+    if (on && repeat_press(d->press_at, k)) return;
     pthread_mutex_lock(&d->mu);
     if (!strcmp(k, "talk") && on) {
         if (d->state == S_LISTENING) {

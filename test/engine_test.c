@@ -35,6 +35,7 @@ static const char *OK_REPLY = "{\"candidates\":[{\"content\":{\"parts\":[{\"text
     "{\\\"pitch\\\":48,\\\"start_time\\\":2,\\\"duration\\\":1,\\\"velocity\\\":95}],\\\"feedback\\\":{\\\"result\\\":\\\"Dark and slow.\\\",\\\"clip_name\\\":\\\"dark_bass\\\"}}\"}]}}]}";
 
 int main(void) {
+    setenv("DAEMON_NO_DEBOUNCE", "1", 1);
     E = mpc_engine();
     char dir[] = "/tmp/daemon_eng_XXXXXX"; if (!mkdtemp(dir)) return 1;
 
