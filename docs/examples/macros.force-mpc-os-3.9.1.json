@@ -74,6 +74,36 @@
    ],
    "thumb": "24242c2d28242a302f282c312f2e282226292929292723232323232323232321302f2e262825242424242424242424223036322844422424242424242424242229242424242424242424242424242422243c3727343231252424242425322422252a2824262727252424242424242421292c2925252525252525252525252421",
    "tolerance": 8
+  },
+  "vst_open": {
+   "region": [
+    130,
+    656,
+    40,
+    32
+   ],
+   "thumb": "242424242424242424242424242424242424242424242424242424242424242424242437696a6a6a6a6a6a6a693724242424243c6a6a6a6a6a6a6a6a6a3c24242424243c6a645959595959646a3c24242424243c6a645959595959646a3c24242424243c6a6a6a6a6a6a6a6a6a3c242424242437696a6a6a6a6a6a6a69372424",
+   "tolerance": 12
+  },
+  "empty_insert": {
+   "region": [
+    30,
+    431,
+    100,
+    50
+   ],
+   "thumb": "2b2d202a2d20292e20292f222b2d212c2e20292e20292f21292f222a2e212b2d20292f22292f222f5a22292e212b2e21292e22282e223383ab5b2e222b2d202a2e21282e202832428f3a212b2d1f2a2d21282f22282f232e4b212a2d202a2e22272f24262f24272f222a2f212a2f222b2f23252f23282f232a2e21292e222a2d",
+   "tolerance": 8
+  },
+  "mixer_effects": {
+   "region": [
+    0,
+    745,
+    1280,
+    55
+   ],
+   "thumb": "00000000000000000000000000060b0a000000000000000000000000000e17150317001519001f01072b000306213c230a3600393a0035010a30000a0a24452a0833003034002d02092400070b233d2a00000000000000000000000000111715000000000000000000000000000d151300000000000000000000000000000000",
+   "tolerance": 12
   }
  },
  "macros": {
@@ -254,6 +284,128 @@
     },
     {
      "expect": "matrix"
+    }
+   ]
+  },
+  "select_track": {
+   "params": {
+    "track": {
+     "type": "int",
+     "min": 1,
+     "max": 8
+    }
+   },
+   "steps": [
+    {
+     "press": "MATRIX",
+     "label": "clip matrix"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "expect": "matrix_bar"
+    },
+    {
+     "tap": [
+      "72 + 146*(track-1)",
+      40
+     ],
+     "require_change": false,
+     "label": "track header"
+    }
+   ]
+  },
+  "load_plugin": {
+   "params": {
+    "track": {
+     "type": "int",
+     "min": 1,
+     "max": 8
+    },
+    "plugin": {
+     "type": "string"
+    }
+   },
+   "steps": [
+    {
+     "press": "MIXER",
+     "label": "mixer"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "tap": [
+      770,
+      770
+     ],
+     "require_change": false,
+     "label": "EFFECTS tab"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "expect": "mixer_effects"
+    },
+    {
+     "find_empty": {
+      "origin": [
+       "80 + 160*(track-1)",
+       370
+      ],
+      "step": [
+       0,
+       86
+      ],
+      "size": [
+       100,
+       50
+      ],
+      "count": 4,
+      "like": "empty_insert"
+     },
+     "label": "first free insert slot"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "wait": 500
+    },
+    {
+     "tap": [
+      230,
+      676
+     ],
+     "skip_if": "vst_open",
+     "require_change": false,
+     "label": "expand the VST group"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "find_tap": "{plugin}",
+     "hint": "the plugin picker list (VST group expanded): the plugin's name in a row",
+     "tries": 5,
+     "scroll_at": [
+      640,
+      450
+     ],
+     "amount": 300
+    },
+    {
+     "tap": [
+      960,
+      770
+     ],
+     "require_change": true,
+     "label": "SELECT"
+    },
+    {
+     "wait": 800
     }
    ]
   }

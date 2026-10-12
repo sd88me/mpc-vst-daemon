@@ -4,7 +4,7 @@ Daemon's agent can select a track and load a plugin onto it by driving MPC's own
 (jacob-sabella/mpc-addin-remote, MCP on `127.0.0.1:6720`). Nothing in the commander addin can do this, and MPC has no API for it.
 
 Touch positions depend on the device and its screen layout, so they are **data you record on your own device**, in
-`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_plugin` are not recorded yet.**
+`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_plugin` were recorded 2026-10-12 (load_plugin awaits an end-to-end agent run).**
 
 ## Format
 ```json
@@ -75,6 +75,14 @@ to find the next free slot of a track.
 - The remote addin's `scroll` takes an `amount` of 20 to 2000 (pixels), not a count. The swipe starts at centre minus amount/2 and must start **inside** the list (a list at y 300-740 needs the centre near y 520 and an amount of about 400, repeated); a longer swipe starts above the list and does nothing. After folder-up the browser scrolls to the folder it came from, so always scroll to the top before tapping a row. The browser also remembers its last tab (Places or Content): tap Places and check it with a fingerprint first.
 - The remote addin's `scroll` takes an `amount` of 20 to 2000 (pixels), not a count. Fingerprint regions of animated things (a playing clip, the scene column) never settle: use the
   empty lower rows of the matrix and the black bottom bar.
+
+## Recorded: select_track and load_plugin (Force, MPC OS 3.9.1)
+- Track headers of the clip matrix (MATRIX button) are at x = 72 + 146*(track-1), y = 40 (8 tracks fit); a double tap on a header opens Track Settings, whose Plugin
+  field only shows the instrument and does not open a list. Effects load from the **Mixer, EFFECTS tab**: the insert slots of a track strip sit at x = 80 + 160*(track-1),
+  y = 370 + 86*(slot-1); tapping an empty one opens the plugin picker (TYPE tab; the VST group is the last row and stays expanded between openings), SELECT is at (960, 770).
+- Step options added for this: `skip_if` (a fingerprint name; the step is skipped when the screen already looks like it, used so the VST group is not collapsed by a second tap)
+  and, on `find_tap`, `tries` (0 to 8) with `scroll_at` [x, y] and `amount`: scroll the list and ask the model again.
+- The bottom `+` / `-` buttons of the Track Settings dialog step to the next / previous track (past the last one they reach the submixes): do not use them to change values.
 
 ## The vision step
 `find_tap` takes a screenshot, asks Gemini where the named button, tile or list entry is (a point in 0 to 1000 of the image, converted

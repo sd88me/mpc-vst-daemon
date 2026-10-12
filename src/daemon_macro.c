@@ -56,7 +56,7 @@ static int eval_jv(jv *v, const char **names, const double *vals, int n, double 
 
 /* ---- validation ---- */
 static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "find_empty", "call", "repeat", "expect", NULL };
-static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", NULL };
+static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", "skip_if", "scroll_at", "tries", NULL };
 static int in_list(const char *k, const char **l) { for (; *l; l++) if (!strcmp(k, *l)) return 1; return 0; }
 
 static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, size_t cap, int depth) {
@@ -78,6 +78,8 @@ static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, siz
         for (const char *key = "tap"; key; key = !strcmp(key, "tap") ? "double_tap" : !strcmp(key, "double_tap") ? "long_press" : NULL)
             if ((c = djson_get(s, key)) != NULL && (c->t != 'a' || djson_len(c) != 2)) { snprintf(err, cap, "macro %s step %d: %s needs [x, y]", macro, i + 1, key); return -1; }
         if ((c = djson_get(s, "scroll")) != NULL && (c->t != 'a' || djson_len(c) != 2 || !djson_get(s, "direction"))) { snprintf(err, cap, "macro %s step %d: scroll needs [x, y] and a direction", macro, i + 1); return -1; }
+        if ((c = djson_get(s, "skip_if")) != NULL && (c->t != 's' || !djson_get(djson_get(m->root, "fingerprints"), c->str))) { snprintf(err, cap, "macro %s step %d: skip_if names an unknown fingerprint", macro, i + 1); return -1; }
+        if ((c = djson_get(s, "tries")) != NULL && (c->num < 0 || c->num > 8 || !djson_get(s, "find_tap") || !djson_get(s, "scroll_at"))) { snprintf(err, cap, "macro %s step %d: tries (0 to 8) goes with find_tap and scroll_at", macro, i + 1); return -1; }
         if ((c = djson_get(s, "expect")) != NULL) {
             if (c->t != 's' || !djson_get(djson_get(m->root, "fingerprints"), c->str)) { snprintf(err, cap, "macro %s step %d: expects an unknown fingerprint", macro, i + 1); return -1; }
         }
@@ -181,6 +183,12 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
         i++;
         if (++r->steps > MAX_STEPS_PER_RUN) return fail(r, "%s", "too many steps in one run", i, macro);
         jv *a;
+        if ((a = djson_get(s, "skip_if"))) {           /* the screen already looks as this step would leave it: skip it */
+            jv *f = djson_get(djson_get(r->m->root, "fingerprints"), a->str), *rg = djson_get(f, "region"); uint8_t want[FP_BYTES], got[FP_BYTES]; char e2[160] = "";
+            fp_unhex(djson_str(f, "thumb", ""), want);
+            if (fp_capture(r->mcp, (int)djson_at(rg, 0)->num, (int)djson_at(rg, 1)->num, (int)djson_at(rg, 2)->num, (int)djson_at(rg, 3)->num, got, e2, sizeof e2)) return fail(r, "could not check the screen: %.120s", e2, i, macro);
+            if (fp_distance(want, got) <= djson_num(f, "tolerance", 12)) continue;
+        }
         if ((a = djson_get(s, "tap")) || (a = djson_get(s, "double_tap")) || (a = djson_get(s, "long_press"))) {
             const char *tool = djson_get(s, "tap") ? "tap" : djson_get(s, "double_tap") ? "double_tap" : "long_press";
             double x, y;
@@ -210,8 +218,17 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
             char target[160], hint[200] = "", why[200] = "", text[300]; char *png = NULL; int x = 0, y = 0;
             subst(r, a->str, target, sizeof target); subst(r, djson_str(s, "hint", ""), hint, sizeof hint);
             if (!r->vision) return fail(r, "%s", "no vision available to find things on screen", i, macro);
-            if (mcp_call(r->mcp, "screenshot", "{\"zoom\":1}", text, sizeof text, &png) < 0 || !png) { free(png); return fail(r, "%s", "could not read the screen", i, macro); }
-            int rc = r->vision(r->user, target, hint, png, r->sw, r->sh, &x, &y, why, sizeof why); free(png);
+            int tries = (int)djson_num(s, "tries", 0), rc = -1; jv *sa = djson_get(s, "scroll_at");   /* tries: scroll the list at scroll_at by amount and look again */
+            for (int t = 0; t <= tries; t++) {
+                if (t > 0) {
+                    double sx, sy; if (!sa || eval_jv(djson_at(sa, 0), r->names, r->vals, r->np, &sx) || eval_jv(djson_at(sa, 1), r->names, r->vals, r->np, &sy)) return fail(r, "%s", "tries needs scroll_at", i, macro);
+                    char sargs[160]; snprintf(sargs, sizeof sargs, "{\"x\":%d,\"y\":%d,\"direction\":\"down\",\"amount\":%d,\"screenshot\":\"none\"}", (int)lround(sx), (int)lround(sy), (int)djson_num(s, "amount", 400));
+                    if (mcp_call(r->mcp, "scroll", sargs, text, sizeof text, NULL) < 0) return fail(r, "%.150s", text, i, macro);
+                }
+                if (mcp_call(r->mcp, "screenshot", "{\"zoom\":1}", text, sizeof text, &png) < 0 || !png) { free(png); return fail(r, "%s", "could not read the screen", i, macro); }
+                rc = r->vision(r->user, target, hint, png, r->sw, r->sh, &x, &y, why, sizeof why); free(png); png = NULL;
+                if (rc >= 0) break;
+            }
             if (rc < 0) return fail(r, "could not find on screen: %.160s", why[0] ? why : target, i, macro);
             if (touch(r, "tap", x, y, s, macro, i, 1)) return -1;      /* a found target must do something, unless the step says otherwise */
         } else if ((a = djson_get(s, "find_empty"))) {
