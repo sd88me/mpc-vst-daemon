@@ -251,6 +251,20 @@ int main(void) {
     CHECK(!memcmp(hd, "MThd", 4), "saved %s", mid);
     CHECK(!strncmp(get(a, "status"), "SAVED dark_bass", 15), "save status '%s'", get(a, "status"));
 
+    /* the saved-parts folder: default "Daemon" at the drive root (the path before /Synths/), or clips_dir= (relative to that root) */
+    for (int variant = 0; variant < 2; variant++) {
+        char root[300], eng[400], cp[460]; snprintf(root, sizeof root, "%s/drive%d", dir, variant); mkdir(root, 0755);
+        snprintf(eng, sizeof eng, "%s/Synths", root); mkdir(eng, 0755); strcat(eng, "/P"); mkdir(eng, 0755); strcat(eng, "/engine"); mkdir(eng, 0755);
+        snprintf(cp, sizeof cp, "%s/daemon.conf", eng);
+        FILE *cf2 = fopen(cp, "w"); fputs("api_key=KEY123\nmodel=test-model\nurl_base=http://x/models\n", cf2); if (variant) fputs("clips_dir=Parts/Mine\n", cf2); fclose(cf2);
+        if (variant) { char pp[420]; snprintf(pp, sizeof pp, "%s/Parts", root); mkdir(pp, 0755); }
+        void *g2 = E->create(eng); fake.code = 200; snprintf(fake.resp, sizeof fake.resp, "%s", OK_REPLY);
+        E->set_param(g2, "prompt", "x"); wait_not_thinking(g2); E->set_param(g2, "save", "1");
+        char want[520]; snprintf(want, sizeof want, "%s/%s/dark_bass.mid", root, variant ? "Parts/Mine" : "Daemon");
+        CHECK(access(want, R_OK) == 0, "clips folder variant %d: %s", variant, want);
+        E->destroy(g2);
+    }
+
     /* failures say what happened and keep the old part */
     fake.code = 404; snprintf(fake.resp, sizeof fake.resp, "{\"error\":{\"message\":\"model gone\"}}");
     E->set_param(a, "regen", "1"); wait_not_thinking(a);
@@ -266,7 +280,7 @@ int main(void) {
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
     E->destroy(a);
-    CHECK(fake.closed == 8, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 10, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

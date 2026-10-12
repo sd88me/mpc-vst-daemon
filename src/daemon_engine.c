@@ -28,7 +28,7 @@ typedef struct {
     pthread_mutex_t mu; pthread_cond_t cv; pthread_t th, th_drop;
     int th_up, drop_up, quit, pending, with_audio;
     const daemon_io_t *io; void *midi;
-    char dir[256], key[128], model[64], url_base[160], input_dir[160]; int input_test;
+    char dir[256], clips_dir[300], key[128], model[64], url_base[160], input_dir[160]; int input_test;
     int state, rev;
     char status[96], transcript[256], reply[512];
     int type, keyi, scale, bars, channel, play;
@@ -63,6 +63,7 @@ static void conf_load(dm_t *d) {
         else if (!strcmp(line, "input_dir")) { snprintf(d->input_dir, sizeof d->input_dir, "%s", v); d->input_test = 1; }   /* tests: a FIFO dir */
         else if (!strcmp(line, "commander")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->cmdr_host, sizeof d->cmdr_host, "%s", h); d->cmdr_port = pt; } }
         else if (!strcmp(line, "remote")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->remote_host, sizeof d->remote_host, "%s", h); d->remote_port = pt; } }
+        else if (!strcmp(line, "clips_dir")) snprintf(d->clips_dir, sizeof d->clips_dir, "%s", v);   /* absolute, or relative to the drive root */
         else if (!strcmp(line, "url_base")) snprintf(d->url_base, sizeof d->url_base, "%s", v);   /* tests point this at a local server */
     }
     fclose(f);
@@ -267,6 +268,16 @@ static void kb_found(void *u, int n) {
     pthread_mutex_unlock(&d->mu);
 }
 
+/* Where saved parts go. Default: a "Daemon" folder at the root of the drive the plugin is installed on (the MPC browser calls the
+ * internal drive "User"), found as the part of the plugin's path before "/Synths/"; elsewhere <engine>/clips. clips_dir= in
+ * daemon.conf overrides it: absolute, or relative to that drive root. */
+static void clips_dir_resolve(dm_t *d) {
+    char root[256] = ""; const char *sy = strstr(d->dir, "/Synths/");
+    if (sy) snprintf(root, sizeof root, "%.*s", (int)(sy - d->dir), d->dir);
+    if (!d->clips_dir[0]) { if (root[0]) snprintf(d->clips_dir, sizeof d->clips_dir, "%s/Daemon", root); else snprintf(d->clips_dir, sizeof d->clips_dir, "%s/clips", d->dir); }
+    else if (d->clips_dir[0] != '/') { char t[300]; snprintf(t, sizeof t, "%s/%s", root[0] ? root : d->dir, d->clips_dir); snprintf(d->clips_dir, sizeof d->clips_dir, "%s", t); }
+}
+
 /* engine/prompt.txt: a text file dropped there (ssh, a phone's file share) is a typed prompt; read once, then deleted */
 static void *drop_watch(void *arg) {
     dm_t *d = arg; char path[300]; snprintf(path, sizeof path, "%s/prompt.txt", d->dir);
@@ -293,6 +304,7 @@ static void *create(const char *data_dir) {
     snprintf(d->dir, sizeof d->dir, "%s", data_dir ? data_dir : ".");
     d->io = daemon_io(); d->type = 2; d->keyi = 5; d->scale = 1; d->bars = 4; d->channel = 1; d->play = 1;
     conf_load(d);
+    clips_dir_resolve(d);
     { char mp[300], me[160]; snprintf(mp, sizeof mp, "%s/macros.json", d->dir); d->macros = macros_load(mp, me, sizeof me); }   /* none is fine: the screen tools are then not offered */
     snprintf(d->status, sizeof d->status, "READY"); 
     d->midi = d->io->midi_open("Daemon", "MIDI Out");
@@ -339,7 +351,7 @@ static int save_mid(dm_t *d) {                         /* d->mu held */
     int len = daemon_write_smf(&d->part, d->channel - 1, d->bpm, buf, sizeof buf);
     if (len < 0) return -1;
     char dir[300], path[400];
-    snprintf(dir, sizeof dir, "%s/clips", d->dir); mkdir(dir, 0755);
+    snprintf(dir, sizeof dir, "%s", d->clips_dir); mkdir(dir, 0755);
     snprintf(path, sizeof path, "%s/%s.mid", dir, d->part.clip_name);
     FILE *f = fopen(path, "wb"); if (!f) return -1;
     size_t w = fwrite(buf, 1, (size_t)len, f); fclose(f);
