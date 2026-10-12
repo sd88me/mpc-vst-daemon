@@ -26,7 +26,18 @@ typedef struct {
     int (*close_)(void *);
 } midi_t;
 
+/* One ALSA client for the whole MPC session. MPC keeps each MIDI port's switches (Global, Control, Track) under the port's client
+ * number, which ALSA hands out afresh every time a client is opened; a client re-created on every project load would come back
+ * as a new device with its switches off. So the client is opened once and never closed, and this library pins itself in memory
+ * (RTLD_NODELETE) so the handle survives the host unloading the plugin. */
+static midi_t *g_midi;
+static void pin_library(void) {
+    Dl_info di;
+    if (dladdr((void *)pin_library, &di) && di.dli_fname) dlopen(di.dli_fname, RTLD_NOW | RTLD_NODELETE);
+}
+
 static void *midi_open(const char *client, const char *port) {
+    if (g_midi) return g_midi;
     midi_t *m = calloc(1, sizeof *m);
     m->lib = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
     if (!m->lib) { free(m); return NULL; }
@@ -37,6 +48,7 @@ static void *midi_open(const char *client, const char *port) {
     m->set_name(m->seq, client);
     m->port = m->mk_port(m->seq, port, CAP_READ | CAP_SUBS_READ, PT_MIDI_GENERIC | PT_APPLICATION);
     if (m->port < 0) { m->close_(m->seq); dlclose(m->lib); free(m); return NULL; }
+    pin_library(); g_midi = m;
     return m;
 }
 
@@ -51,7 +63,7 @@ static void midi_send(void *h, int ch, int on, int pitch, int vel) {
 
 static void midi_stat(void *h, long *bad, int *last_rc) { midi_t *m = h; *bad = m ? m->bad : -1; *last_rc = m ? m->last_rc : 0; }
 
-static void midi_close(void *h) { midi_t *m = h; if (!m) return; m->close_(m->seq); dlclose(m->lib); free(m); }
+static void midi_close(void *h) { (void)h; }   /* the shared client stays open: see g_midi */
 
 /* ---- libcurl ---- */
 enum { OPT_WRITEDATA = 10001, OPT_URL = 10002, OPT_POSTFIELDS = 10015, OPT_HTTPHEADER = 10023, OPT_CAINFO = 10065,
