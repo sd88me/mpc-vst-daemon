@@ -39,7 +39,7 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
 - Reading the Gemini key: only inside scripts/ssh pipes, never print it (`/mnt/c/Users/Sam/.gemini_api_key`, or `~/.gemini_api_key`).
 
 ## Not tested on the device yet
-Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), commander transport state (needs MIDI port + Receive MMC),
+Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), commander transport state (verified 2026-10-12 through an SSH tunnel with test/live_cmdr: playing true/false, tempo, bar/beat, source mmc; MPC Commander In needs Sync on and Send MMC on; the client only reads pushes while a request waits),
 vision step (`find_tap`). Skin: live text is MPC's own font, not monospace.
 
 ## Before any public release

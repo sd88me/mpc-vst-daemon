@@ -10,7 +10,8 @@ int main(int argc, char **argv) {
     if (!c) { printf("open failed: %s\n", err); return 1; }
     static char b[1 << 17];
     int n = cmdr_plugins_summary(c, b, sizeof b); printf("plugins (%d bytes): %.1500s\n", n, b);
-    n = cmdr_transport_state(c, b, sizeof b); printf("transport: %.300s\n", b);
     n = cmdr_project(c, b, sizeof b); printf("project (%d bytes): %.1200s\n", n, b);
+    n = cmdr_project(c, b, sizeof b);   /* a second round trip: the transport message is only read while a request waits */
+    n = cmdr_transport_state(c, b, sizeof b); printf("transport: %.300s\n", b);
     cmdr_close(c); return 0;
 }
