@@ -70,8 +70,9 @@ to find the next free slot of a track.
 ## Recorded on a Force (2026-10-12): things that mattered
 - The browser's **folder-up** button (path line, top left) repeated 8 times always lands at the drive root, and refreshes a stale listing; tapping the drive's name does
   not go to the root when already on that drive. The list is sorted by modified date, newest first, so the folder just written to is the first row. A fingerprint of the
-  path text (tolerance 2.5) stops the macro if it is not the folder expected.
+  folder-name part of the path (region `[150,40,140,26]`, tolerance 4; a wider region barely differs between folders) stops the macro if it is not the folder expected.
 - The browser's file-type filter hides MIDI files unless the MIDI icon is on, and a LOAD does nothing unless a clip slot is selected first.
+- The remote addin's `scroll` takes an `amount` of 20 to 2000 (pixels), not a count. The swipe starts at centre minus amount/2 and must start **inside** the list (a list at y 300-740 needs the centre near y 520 and an amount of about 400, repeated); a longer swipe starts above the list and does nothing. After folder-up the browser scrolls to the folder it came from, so always scroll to the top before tapping a row. The browser also remembers its last tab (Places or Content): tap Places and check it with a fingerprint first.
 - The remote addin's `scroll` takes an `amount` of 20 to 2000 (pixels), not a count. Fingerprint regions of animated things (a playing clip, the scene column) never settle: use the
   empty lower rows of the matrix and the black bottom bar.
 

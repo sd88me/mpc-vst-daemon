@@ -124,9 +124,18 @@ static int ui_cb(void *u, const char *tool, const char *args, char *res, size_t 
     return macro_run(d->macros, c->mcp, tool, use, vision_gemini, c, res, cap);
 }
 
+/* macros.json is read again at the start of every plan and run, so a re-recorded macro needs no project reload (worker thread only) */
+static void macros_refresh(dm_t *d) {
+    char mp[300], me[160]; snprintf(mp, sizeof mp, "%s/macros.json", d->dir);
+    macros_t *n = macros_load(mp, me, sizeof me);
+    pthread_mutex_lock(&d->mu); macros_t *old = d->macros; d->macros = n; pthread_mutex_unlock(&d->mu);
+    macros_free(old);
+}
+
 static void publish_error(dm_t *d, const char *fmt, const char *a) { pthread_mutex_lock(&d->mu); set_status(d, S_ERROR, fmt, a); pthread_mutex_unlock(&d->mu); }
 
 static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
+    macros_refresh(d);
     char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);     /* NULL: planning still works for parts; tools say why */
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
@@ -173,6 +182,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
 }
 
 static void agent_run(dm_t *d, const snap_t *s) {
+    macros_refresh(d);
     pthread_mutex_lock(&d->mu);
     if (!d->plan_ok) { pthread_mutex_unlock(&d->mu); return; }
     aturn_t plan = d->plan; plan.raw = NULL;                     /* a copy of the calls; the plan keeps the raw turn */

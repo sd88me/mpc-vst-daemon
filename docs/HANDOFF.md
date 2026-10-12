@@ -21,12 +21,9 @@ Files: `docs/examples/macros.force-mpc-os-3.9.1.json` (installed as `engine/macr
 fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel to the remote addin: `ssh -f -N -L 16720:127.0.0.1:6720 root@<force>`),
 `tools/macro_fp.c` (capture a fingerprint, no screenshot cost), `tools/macro_check.c`.
 - Verified end to end once (43 steps, clip landed in the next free slot of track 1) when the browser was already on its **Places** tab.
-- **Current bug (the safety check caught it):** from a fresh state the macro stopped at step 19 (`expect browser_daemon` difference 3.9, allowed 2.5) because
-  the first row at the drive root was not `Daemon` (the user saw it enter `mdp3`). Most likely cause: the browser had opened on its **Content** tab (left panel:
-  Audio Clips/Instruments...) and my final macro lost the `tap [88,150]` (Places tab) that the working stage `p3` had. Fix to try first: add
-  `{ "tap": [88,150] }` (Places) + a short wait before the folder-up taps, and capture a fingerprint of the left panel to confirm the Places tab.
-  Also strengthen `browser_daemon`/`browser_user` (path text region is weak: "Daemon" vs "mdp3" differ only by ~4): capture a narrower region around the
-  folder name (about `[150,40,140,26]`), and re-measure against another folder before trusting a tolerance.
+- **Fixed 2026-10-12:** the failure was the browser opening on its Content tab and a scroll that never started inside the list. The macro now taps Places and checks it,
+  folder-up x8, scrolls to the top with four 400-pixel swipes centred at (850,520), and checks the narrow folder-name fingerprints. Verified from a fresh state (53 steps):
+  the part `dub_chords` landed in track 1's first free slot. The macro file is re-read at the start of each plan and run (no project reload needed).
 - Other facts (all in docs/MACROS.md): folder-up button (44,54) x8 reaches the root and refreshes a stale listing; newest folder sorts first; `scroll` amount
   must be 20-2000; fingerprint only static regions; LOAD needs a selected slot; the drive named `662522` is external, the internal one is `User`.
 - Not recorded yet: `select_track`, `load_plugin`, instrument parameter editing via the commander (commander `set_param` works; selecting a track /
@@ -42,7 +39,7 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
 - Reading the Gemini key: only inside scripts/ssh pipes, never print it (`/mnt/c/Users/Sam/.gemini_api_key`, or `~/.gemini_api_key`).
 
 ## Not tested on the device yet
-Mic capture, USB/Bluetooth keyboard (evdev grab), agent plan -> RUN of `import_clip` end to end, commander transport state (needs MIDI port + Receive MMC),
+Mic capture, USB/Bluetooth keyboard (evdev grab), agent plan -> RUN of `import_clip` end to end (the macro itself is verified; the RUN from Daemon's button is not yet), commander transport state (needs MIDI port + Receive MMC),
 vision step (`find_tap`). Skin: live text is MPC's own font, not monospace.
 
 ## Before any public release
