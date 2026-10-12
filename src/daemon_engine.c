@@ -213,7 +213,11 @@ static void *worker(void *arg) {
             continue;
         }
         int code = 0, bl = daemon_build_request(&rq, typed, audio ? wav : NULL, audio ? (size_t)wl : 0, body, 1400000);
-        if (bl > 0) code = d->io->http_post(url, key, body, (size_t)bl, resp, 600000, 60);
+        for (int tries = 0; bl > 0 && tries < 3; tries++) {       /* Gemini answers 503/429 under load: try again after a pause */
+            code = d->io->http_post(url, key, body, (size_t)bl, resp, 600000, 60);
+            if (code != 503 && code != 429 && code != 500) break;
+            for (int w = 0; w < 30 * (tries + 1); w++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
+        }
         int ok = 0; char err[96] = "";
         if (bl < 0) snprintf(err, sizeof err, "request too large");
         else if (code == 0) snprintf(err, sizeof err, "no network: %.70s", resp);
@@ -270,8 +274,8 @@ static void *drop_watch(void *arg) {
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
         { char lp[300]; snprintf(lp, sizeof lp, "%s/daemon.log", d->dir); FILE *lf = fopen(lp, "w");
           if (lf) { pthread_mutex_lock(&d->mu);
-              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\n",
-                      d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state);
+              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\n",
+                      d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state, d->status);
               pthread_mutex_unlock(&d->mu); fclose(lf); } }
         FILE *f = fopen(path, "r"); if (!f) continue;
         char t[256]; size_t n = fread(t, 1, sizeof t - 1, f); fclose(f); unlink(path);
