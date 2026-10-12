@@ -237,9 +237,14 @@ int main(void) {
 
     /* the project chunk round-trips the settings */
     E->set_param(a, "type", "Beats"); E->set_param(a, "key", "D#"); E->set_param(a, "scale", "Blues"); E->set_param(a, "bars", "7"); E->set_param(a, "channel", "10");
+    E->set_param(a, "agent", "1");
     char st[64]; snprintf(st, sizeof st, "%s", get(a, "state"));
     void *b2 = E->create(dir); E->set_param(b2, "state", st);
     CHECK(!strcmp(get(b2, "state"), st) && !strcmp(get(b2, "type"), "Beats") && !strcmp(get(b2, "key"), "D#") && !strcmp(get(b2, "scale"), "Blues") && !strcmp(get(b2, "bars"), "7"), "state '%s' -> '%s'", st, get(b2, "state"));
+    CHECK(!strcmp(get(b2, "agent"), "On"), "the Agent toggle is saved with the project");
+    E->set_param(a, "agent", "0"); E->set_param(b2, "state", "2,5,1,4,1,1");           /* an older chunk without the agent field leaves it alone */
+    CHECK(!strcmp(get(b2, "agent"), "On"), "an old six-field chunk keeps the toggle");
+    E->set_param(b2, "state", st);
     E->set_param(b2, "state", "garbage"); CHECK(!strcmp(get(b2, "type"), "Beats"), "a bad chunk leaves the settings alone");
     E->destroy(b2);
     E->set_param(a, "type", "Melody"); E->set_param(a, "key", "A"); E->set_param(a, "scale", "Dorian"); E->set_param(a, "bars", "2"); E->set_param(a, "channel", "2");

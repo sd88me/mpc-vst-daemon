@@ -403,10 +403,11 @@ static void set_param(void *inst, const char *k, const char *v) {
     else if (!strcmp(k, "scale")) d->scale = opt_index(SCALES, N(SCALES), v);
     else if (!strcmp(k, "bars")) { d->bars = atoi(v); if (d->bars < 1) d->bars = 1; if (d->bars > 8) d->bars = 8; }
     else if (!strcmp(k, "channel")) { d->channel = atoi(v); if (d->channel < 1) d->channel = 1; if (d->channel > 16) d->channel = 16; }
-    else if (!strcmp(k, "state")) {                      /* the project chunk: "type,key,scale,bars,channel,play" */
-        int t, ky, sc, b, c, pl;
-        if (sscanf(v, "%d,%d,%d,%d,%d,%d", &t, &ky, &sc, &b, &c, &pl) == 6 && t >= 0 && t < N(TYPES) && ky >= 0 && ky < N(KEYS) && sc >= 0 && sc < N(SCALES)) {
-            d->type = t; d->keyi = ky; d->scale = sc; d->bars = b < 1 ? 1 : b > 8 ? 8 : b; d->channel = c < 1 ? 1 : c > 16 ? 16 : c; d->play = pl != 0; d->pl_gen = -1;
+    else if (!strcmp(k, "state")) {                      /* the project chunk: "type,key,scale,bars,channel,play[,agent]" */
+        int t, ky, sc, b, c, pl, ag = 0;
+        int got = sscanf(v, "%d,%d,%d,%d,%d,%d,%d", &t, &ky, &sc, &b, &c, &pl, &ag);
+        if (got >= 6 && t >= 0 && t < N(TYPES) && ky >= 0 && ky < N(KEYS) && sc >= 0 && sc < N(SCALES)) {
+            d->type = t; d->keyi = ky; d->scale = sc; d->bars = b < 1 ? 1 : b > 8 ? 8 : b; d->channel = c < 1 ? 1 : c > 16 ? 16 : c; d->play = pl != 0; d->pl_gen = -1; if (got == 7) d->agent = ag != 0;
         }
     }
     else if (!strcmp(k, "play")) { d->play = on || !strcmp(v, "Play"); d->pl_gen = -1; }
@@ -430,7 +431,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
         r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE || d->state == S_PLAN ? 3 : d->state == S_TYPING ? 5 : 4]); }
-    else if (!strcmp(k, "state")) r = snprintf(b, n, "%d,%d,%d,%d,%d,%d", d->type, d->keyi, d->scale, d->bars, d->channel, d->play);
+    else if (!strcmp(k, "state")) r = snprintf(b, n, "%d,%d,%d,%d,%d,%d,%d", d->type, d->keyi, d->scale, d->bars, d->channel, d->play, d->agent);
     pthread_mutex_unlock(&d->mu);
     return r;
 }
