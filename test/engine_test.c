@@ -165,7 +165,7 @@ int main(void) {
         fake.nq = 0;
     }
 
-    /* device tools: load_plugin runs a recorded macro through the remote addin; the vision step asks Gemini where the plugin is.
+    /* device tools: load_efx runs a recorded macro through the remote addin; the vision step asks Gemini where the plugin is.
      * A failing screen action stops the run before the changes after it. (The macros here are test data, not a recording.) */
     {
         int ci[2], co[2], ri[2], ro[2]; if (pipe(ci) || pipe(co) || pipe(ri) || pipe(ro)) return 1;
@@ -183,18 +183,18 @@ int main(void) {
         cf = fopen(p1, "w");
         fputs("{\"version\":1,\"screen\":[1280,800],\"macros\":{"
               "\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"tap\":[\"100 + 140*(track-1)\",300],\"require_change\":true}]},"
-              "\"load_plugin\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"}]}}}", cf);
+              "\"load_efx\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"}]}}}", cf);
         fclose(cf);
         void *g = E->create(d2);
         E->set_param(g, "agent", "On");
         fake.nq = 1; fake.qi = 0; fake.code = 200;
         snprintf(fake.queue[0], sizeof fake.queue[0], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Loading 9W9 on track 2 and opening its filter.\"},"
-            "{\"functionCall\":{\"name\":\"load_plugin\",\"args\":{\"track\":2,\"plugin\":\"9W9\"}}},{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":0,\"value\":0.5}}}]}}]}");
+            "{\"functionCall\":{\"name\":\"load_efx\",\"args\":{\"track\":2,\"plugin\":\"9W9\"}}},{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":0,\"value\":0.5}}}]}}]}");
         E->set_param(g, "prompt", "put 9w9 on track 2");
         for (int i = 0; i < 400 && !strncmp(get(g, "status"), "THINKING", 8); i++) usleep(10000);
         CHECK(!strcmp(get(g, "status"), "PLAN 2 STEPS: press RUN"), "plan with a device tool: '%s'", get(g, "status"));
         CHECK(strstr(get(g, "plan"), "1 load 9W9 on track 2") && strstr(get(g, "plan"), "2 set Profit-8 Cutoff to 50%"), "plan lines '%s'", get(g, "plan"));
-        CHECK(strstr(fake.body, "load_plugin") && strstr(fake.body, "select_track"), "the model was offered the device tools");
+        CHECK(strstr(fake.body, "load_efx") && strstr(fake.body, "select_track"), "the model was offered the device tools");
         snprintf(fake.queue[1], sizeof fake.queue[1], "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"found\\\":true,\\\"point\\\":[500,500]}\"}]}}]}");
         fake.nq = 2; int vp = fake.posts;
         E->set_param(g, "run", "1");

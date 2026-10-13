@@ -35,8 +35,8 @@ static int play_cb(void *u, const char *args, char *res, size_t cap) {
 int main(void) {
     CHECK(agent_tool_is_read_only("get_project") && agent_tool_is_read_only("list_plugins") && agent_tool_is_read_only("get_plugin_params"), "read-only tools");
     CHECK(!agent_tool_is_read_only("set_param") && !agent_tool_is_read_only("transport") && !agent_tool_is_read_only("play_part") && !agent_tool_is_read_only("rm_rf"), "changing and unknown tools are not read-only");
-    CHECK(agent_tool_known("transport") && agent_tool_known("load_plugin") && agent_tool_known("select_track") && !agent_tool_known("format_disk") && !agent_tool_known(""), "known tools");
-    CHECK(!agent_tool_is_read_only("load_plugin") && agent_tool_is_ui("select_track") && !agent_tool_is_ui("set_param"), "device tools change things");
+    CHECK(agent_tool_known("transport") && agent_tool_known("load_efx") && agent_tool_known("select_track") && !agent_tool_known("format_disk") && !agent_tool_known(""), "known tools");
+    CHECK(!agent_tool_is_read_only("load_efx") && agent_tool_is_ui("select_track") && !agent_tool_is_ui("set_param"), "device tools change things");
 
     static aturn_t t;
     CHECK(agent_parse_turn(TURN, &t) == 0 && t.n == 3, "parse turn: %d calls", t.n);
@@ -63,10 +63,12 @@ int main(void) {
     FILE *f = fopen("/tmp/daemon_agent_req.json", "w"); fputs(req, f); fclose(f);
     CHECK(strstr(req, "\"functionResponse\"") && strstr(req, "not run") && strstr(req, "SIG==") && strstr(req, "inline_data"), "request pieces");
     { actx_t with = { 124, "F Minor", 4, "", 7, 3 }; static char r2[1 << 20]; agent_build_request(&with, &h, r2, sizeof r2);
-      CHECK(strstr(r2, "\"load_plugin\"") && strstr(r2, "\"select_track\"") && strstr(r2, "\"import_clip\"") && !strstr(req, "\"load_plugin\"") && !strstr(req, "\"import_clip\""), "device tools are in the request only when has_ui");
+      CHECK(strstr(r2, "\"load_efx\"") && strstr(r2, "\"select_track\"") && strstr(r2, "\"import_clip\"") && !strstr(req, "\"load_efx\"") && !strstr(req, "\"import_clip\""), "device tools are in the request only when has_ui");
       CHECK(strstr(r2, "MIDI channel is set to 3"), "the model is told the channel setting");
       actx_t only = { 124, "F Minor", 4, "", 4, 0 }; static char r3[1 << 20]; agent_build_request(&only, &h, r3, sizeof r3);
-      CHECK(strstr(r3, "\"import_clip\"") && !strstr(r3, "\"select_track\"") && !strstr(r3, "\"load_plugin\""), "only the screen tools whose macro exists are offered"); }
+      CHECK(strstr(r3, "\"import_clip\"") && !strstr(r3, "\"select_track\"") && !strstr(r3, "\"load_efx\""), "only the screen tools whose macro exists are offered");
+      actx_t ins = { 124, "F Minor", 4, "", 8, 0 }; static char r4[1 << 20]; agent_build_request(&ins, &h, r4, sizeof r4);
+      CHECK(strstr(r4, "\"name\":\"load_instrument\"") && !strstr(r2, "\"name\":\"load_instrument\"") && !strstr(r4, "\"name\":\"load_efx\""), "load_instrument is its own tool, offered by bit 8"); }
     agent_hist_free(&h);
 
     /* running tools against the fake commander */
@@ -88,7 +90,7 @@ int main(void) {
     CHECK(agent_exec(c, &t.calls[2], play_cb, ui_cb, NULL, r, sizeof r) == 0 && played == 2 && strstr(r, "2 notes, 2 beats"), "play_part: %s (played %d)", r, played);
     CHECK(agent_exec(c, &(acall_t){ "play_part", "{\"notes\":[]}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1, "empty part: %s", r);
     CHECK(agent_exec(c, &(acall_t){ "format_disk", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "unknown tool"), "unknown tool: %s", r);
-    CHECK(agent_exec(c, &(acall_t){ "load_plugin", "{\"track\":1,\"plugin\":\"9W9\"}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "ran load_plugin") && strstr(ui_seen, "9W9"), "load_plugin runs its macro: %s / %s", r, ui_seen);
+    CHECK(agent_exec(c, &(acall_t){ "load_efx", "{\"track\":1,\"plugin\":\"9W9\"}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "ran load_efx") && strstr(ui_seen, "9W9"), "load_efx runs its macro: %s / %s", r, ui_seen);
     CHECK(agent_exec(c, &(acall_t){ "select_track", "{\"track\":99}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "off the screen"), "a failing macro reports why: %s", r);
     CHECK(agent_exec(c, &(acall_t){ "select_track", "{\"track\":1}" }, play_cb, NULL, NULL, r, sizeof r) == -1 && strstr(r, "no tap macros") == NULL && strstr(r, "recorded on the device"), "without macros: %s", r);
     CHECK(agent_exec(NULL, &(acall_t){ "set_param", "{\"id\":1,\"index\":0,\"value\":1}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "no commander"), "without commander: %s", r);
@@ -98,7 +100,7 @@ int main(void) {
     agent_describe(c, &t.calls[1], d, sizeof d); CHECK(!strcmp(d, "set Profit-8 Cutoff to 35%"), "describe set: '%s'", d);
     agent_describe(c, &t.calls[2], d, sizeof d); CHECK(!strcmp(d, "make a part \"bass\" on channel 3, 2 notes"), "describe part: '%s'", d);
     agent_describe(c, &(acall_t){ "transport", "{\"cmd\":\"record\"}" }, d, sizeof d); CHECK(!strcmp(d, "press record"), "describe transport: '%s'", d);
-    agent_describe(c, &(acall_t){ "load_plugin", "{\"track\":1,\"plugin\":\"9W9\"}" }, d, sizeof d); CHECK(!strcmp(d, "load 9W9 on track 1"), "describe load: '%s'", d);
+    agent_describe(c, &(acall_t){ "load_efx", "{\"track\":1,\"plugin\":\"9W9\"}" }, d, sizeof d); CHECK(!strcmp(d, "load 9W9 on track 1"), "describe load: '%s'", d);
     agent_describe(c, &(acall_t){ "select_track", "{\"track\":4}" }, d, sizeof d); CHECK(!strcmp(d, "select track 4"), "describe select: '%s'", d);
 
     cmdr_close(c); close(in[1]); fclose(so);

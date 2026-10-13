@@ -4,7 +4,7 @@ Daemon's agent can select a track and load a plugin onto it by driving MPC's own
 (jacob-sabella/mpc-addin-remote, MCP on `127.0.0.1:6720`). Nothing in the commander addin can do this, and MPC has no API for it.
 
 Touch positions depend on the device and its screen layout, so they are **data you record on your own device**, in
-`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_plugin` were recorded 2026-10-12 (load_plugin verified end to end: "load the plugin AW Tape - TapeHack2 on track 3" -> plan -> RUN -> TapeHack2 in track 3 insert 1, vision `find_tap` included).**
+`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_efx` were recorded 2026-10-12 (load_efx verified end to end: "load the plugin AW Tape - TapeHack2 on track 3" -> plan -> RUN -> TapeHack2 in track 3 insert 1, vision `find_tap` included).**
 
 ## Format
 ```json
@@ -19,7 +19,7 @@ Touch positions depend on the device and its screen layout, so they are **data y
         { "tap": ["100 + 140*(track-1)", 300], "require_change": true, "label": "track cell" }
       ]
     },
-    "load_plugin": {
+    "load_efx": {
       "params": { "track": { "type": "int", "min": 1, "max": 16 }, "plugin": { "type": "string" } },
       "steps": [
         { "call": "select_track" },
@@ -30,7 +30,7 @@ Touch positions depend on the device and its screen layout, so they are **data y
   }
 }
 ```
-(The numbers above are placeholders, not a recording.) `select_track(track)`, `load_plugin(track, plugin)` and `import_clip(track, folder)` are the names
+(The numbers above are placeholders, not a recording.) `select_track(track)`, `load_efx(track, plugin)` and `import_clip(track, folder)` are the names
 the agent uses; each takes the parameters shown. `import_clip` is run by Daemon after it saves the part: `folder` is the saved-parts folder
 (`clips_dir`, a folder directly on the drive, `Daemon` by default).
 
@@ -76,7 +76,7 @@ to find the next free slot of a track.
 - The remote addin's `scroll` takes an `amount` of 20 to 2000 (pixels), not a count. Fingerprint regions of animated things (a playing clip, the scene column) never settle: use the
   empty lower rows of the matrix and the black bottom bar.
 
-## Recorded: select_track and load_plugin (Force, MPC OS 3.9.1)
+## Recorded: select_track and load_efx (Force, MPC OS 3.9.1)
 - `select_track` goes through the **Mixer** (MIXER button; the clip matrix and its MATRIX button exist on the Force only): the strip headers are at x = 80 + 160*(track-1), y = 40 (8 tracks fit). On the Force's clip matrix the headers are at x = 72 + 146*(track-1) instead; a double tap on a header opens Track Settings, whose Plugin
   field only shows the instrument and does not open a list. Effects load from the **Mixer, EFFECTS tab**: the insert slots of a track strip sit at x = 80 + 160*(track-1),
   y = 370 + 86*(slot-1); tapping an empty one opens the plugin picker (TYPE tab; the VST group is the last row and stays expanded between openings), SELECT is at (960, 770).
@@ -84,9 +84,14 @@ to find the next free slot of a track.
   and, on `find_tap`, `tries` (0 to 8) with `scroll_at` [x, y] and `amount`: scroll the list and ask the model again.
 - The bottom `+` / `-` buttons of the Track Settings dialog step to the next / previous track (past the last one they reach the submixes): do not use them to change values.
 
+## load_efx vs load_instrument
+`load_efx(track, plugin)` puts an effect into the first free insert slot (Mixer, EFFECTS tab). `load_instrument(track, plugin)` replaces a Plugin track's instrument: Mixer, **double tap the
+track title** (Track Settings opens), **double tap the Plugin field** (it shows the current instrument; a single tap or long press does nothing), scroll the picker to its top and
+`find_tap` the name (it opens scrolled to the current instrument), SELECT (960, 770), close the dialog with its X at (1152, 86). The agent is offered each tool only when its macro exists (`has_ui` bit 2 and 8).
+
 ## The vision step
 `find_tap` takes a screenshot, asks Gemini where the named button, tile or list entry is (a point in 0 to 1000 of the image, converted
-to screen pixels), and taps it. It is how `load_plugin` can pick "9W9" out of a list without knowing its position. It only taps when
+to screen pixels), and taps it. It is how `load_efx` can pick "9W9" out of a list without knowing its position. It only taps when
 the model says it is clearly there and unique; otherwise the macro stops and says why. Use `hint` to say what screen should be showing.
 
 ## Safety

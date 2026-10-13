@@ -26,7 +26,7 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
   the part `dub_chords` landed in track 1's first free slot. The macro file is re-read at the start of each plan and run (no project reload needed).
 - Other facts (all in docs/MACROS.md): folder-up button (44,54) x8 reaches the root and refreshes a stale listing; newest folder sorts first; `scroll` amount
   must be 20-2000; fingerprint only static regions; LOAD needs a selected slot; the drive named `662522` is external, the internal one is `User`.
-- Not recorded yet: `select_track`, `load_plugin`, instrument parameter editing via the commander (commander `set_param` works; selecting a track /
+- Not recorded yet: `select_track`, `load_efx`, instrument parameter editing via the commander (commander `set_param` works; selecting a track /
   loading a plugin needs macros). The agent only offers screen tools whose macro exists (`has_ui` mask).
 
 ## Device rules to keep
@@ -40,7 +40,7 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
 
 ## Not tested on the device yet
 Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), commander transport state (verified 2026-10-12 through an SSH tunnel with test/live_cmdr: playing true/false, tempo, bar/beat, source mmc; MPC Commander In needs Sync on and Send MMC on; the client only reads pushes while a request waits),
-(`find_tap` and `load_plugin` are now verified, see docs/MACROS.md). Skin: live text is MPC's own font, not monospace.
+(`find_tap` and `load_efx` are now verified, see docs/MACROS.md). Skin: live text is MPC's own font, not monospace.
 
 ## Before any public release
 Add aarch64 target (Gen2 default per repo policy), create the GitHub repo (ask the user first), catalog entry PR + `catalog_check.py --catalog`, `tested.json`,

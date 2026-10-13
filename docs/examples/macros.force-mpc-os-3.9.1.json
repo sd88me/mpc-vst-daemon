@@ -104,6 +104,16 @@
    ],
    "thumb": "00000000000000000000000000060b0a000000000000000000000000000e17150317001519001f01072b000306213c230a3600393a0035010a30000a0a24452a0833003034002d02092400070b233d2a00000000000000000000000000111715000000000000000000000000000d151300000000000000000000000000000000",
    "tolerance": 12
+  },
+  "track_settings": {
+   "region": [
+    90,
+    60,
+    300,
+    50
+   ],
+   "thumb": "1c1717171717171717171717171717171c1717171717171717171717171717171c231c1f1b24261e201f1717171717171c5d63535157685e59451717171717171c47774b38563f5267391717171717171c252643314b24264a371717171717171c1717171717171717171717171717171c171717171717171717171717171717",
+   "tolerance": 10
   }
  },
  "macros": {
@@ -327,7 +337,7 @@
     }
    ]
   },
-  "load_plugin": {
+  "load_efx": {
    "params": {
     "track": {
      "type": "int",
@@ -417,6 +427,126 @@
     },
     {
      "wait": 800
+    }
+   ]
+  },
+  "load_instrument": {
+   "params": {
+    "track": {
+     "type": "int",
+     "min": 1,
+     "max": 8
+    },
+    "plugin": {
+     "type": "string"
+    }
+   },
+   "steps": [
+    {
+     "press": "MIXER",
+     "label": "mixer"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "tap": [
+      770,
+      770
+     ],
+     "require_change": false,
+     "label": "EFFECTS tab"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "expect": "mixer_effects"
+    },
+    {
+     "double_tap": [
+      "80 + 160*(track-1)",
+      40
+     ],
+     "require_change": true,
+     "label": "track title: Track Settings"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "expect": "track_settings"
+    },
+    {
+     "double_tap": [
+      300,
+      598
+     ],
+     "require_change": true,
+     "label": "the Plugin field: the instrument picker"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "wait": 500
+    },
+    {
+     "scroll": [
+      640,
+      450
+     ],
+     "direction": "up",
+     "amount": 600,
+     "label": "to the top of the list"
+    },
+    {
+     "scroll": [
+      640,
+      450
+     ],
+     "direction": "up",
+     "amount": 600
+    },
+    {
+     "scroll": [
+      640,
+      450
+     ],
+     "direction": "up",
+     "amount": 600
+    },
+    {
+     "find_tap": "{plugin}",
+     "hint": "the instrument picker list (VST group): the plugin's name in a row",
+     "tries": 8,
+     "scroll_at": [
+      640,
+      450
+     ],
+     "amount": 500
+    },
+    {
+     "tap": [
+      960,
+      770
+     ],
+     "require_change": true,
+     "label": "SELECT"
+    },
+    {
+     "wait": 1000
+    },
+    {
+     "tap": [
+      1152,
+      86
+     ],
+     "require_change": false,
+     "label": "close Track Settings"
+    },
+    {
+     "wait": 400
     }
    ]
   }

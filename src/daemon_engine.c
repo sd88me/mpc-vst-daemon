@@ -106,7 +106,7 @@ static int vision_gemini(void *u, const char *target, const char *hint, const ch
     free(body); free(resp); free(text); return rc;
 }
 
-/* select_track / load_plugin: the macro of the same name, on the remote addin's MCP */
+/* select_track / load_efx: the macro of the same name, on the remote addin's MCP */
 static int save_mid(dm_t *d);
 static int ui_cb(void *u, const char *tool, const char *args, char *res, size_t cap) {
     uictx *c = u; dm_t *d = c->d;
@@ -141,7 +141,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
     agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
-    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_plugin") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0), s->channel };
+    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0), s->channel };
     uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
     int done = 0;

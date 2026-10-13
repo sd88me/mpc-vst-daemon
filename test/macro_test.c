@@ -14,7 +14,7 @@ static int fails;
 static const char *GOOD =
  "{\"version\":1,\"screen\":[1280,800],\"macros\":{"
  "\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"press\":\"MENU\"},{\"wait\":10},{\"tap\":[\"100 + 140*(track-1)\",300],\"require_change\":true,\"label\":\"track cell\"}]},"
- "\"load_plugin\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"tap\":[640,400]},{\"scroll\":[300,400],\"direction\":\"down\",\"amount\":2},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"},{\"wait_stable\":500}]},"
+ "\"load_efx\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"tap\":[640,400]},{\"scroll\":[300,400],\"direction\":\"down\",\"amount\":2},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"},{\"wait_stable\":500}]},"
  "\"stale\":{\"steps\":[{\"tap\":[50,750],\"require_change\":true}]},"
  "\"offscreen\":{\"steps\":[{\"tap\":[2000,10]}]},"
  "\"burst\":{\"steps\":[{\"repeat\":3,\"steps\":[{\"tap\":[10,10]}]}]},"
@@ -32,7 +32,7 @@ static int vision_ok(void *u, const char *target, const char *hint, const char *
 int main(void) {
     char err[200];
     macros_t *m = macros_parse(GOOD, err, sizeof err); CHECK(m != NULL, "parse good: %s", err); if (!m) return 1;
-    CHECK(macros_has(m, "load_plugin") && !macros_has(m, "nothing"), "has");
+    CHECK(macros_has(m, "load_efx") && !macros_has(m, "nothing"), "has");
     int w, h; macros_screen(m, &w, &h); CHECK(w == 1280 && h == 800, "screen %dx%d", w, h);
 
     const char *bad[][2] = {
@@ -64,10 +64,10 @@ int main(void) {
     CHECK(macro_run(m, mcp, "nothing", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "no macro called"), "unknown macro: %s", res);
     CHECK(macro_run(m, mcp, "select_track", "nope", vision_ok, NULL, res, sizeof res) == -1, "bad args");
 
-    CHECK(macro_run(m, mcp, "load_plugin", "{\"track\":2,\"plugin\":\"9W9\"}", vision_ok, NULL, res, sizeof res) == 0 && strstr(res, "ran load_plugin"), "load_plugin: %s", res);
-    CHECK(macro_run(m, mcp, "load_plugin", "{\"track\":2,\"plugin\":\"Ghost\"}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "could not find on screen") && strstr(res, "no Ghost"), "plugin not on screen: %s", res);
-    CHECK(macro_run(m, mcp, "load_plugin", "{\"track\":2,\"plugin\":\"9W9\"}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "no vision"), "no vision: %s", res);
-    CHECK(macro_run(m, mcp, "load_plugin", "{\"track\":2}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "missing parameter plugin"), "no plugin: %s", res);
+    CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2,\"plugin\":\"9W9\"}", vision_ok, NULL, res, sizeof res) == 0 && strstr(res, "ran load_efx"), "load_efx: %s", res);
+    CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2,\"plugin\":\"Ghost\"}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "could not find on screen") && strstr(res, "no Ghost"), "plugin not on screen: %s", res);
+    CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2,\"plugin\":\"9W9\"}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "no vision"), "no vision: %s", res);
+    CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "missing parameter plugin"), "no plugin: %s", res);
     CHECK(macro_run(m, mcp, "stale", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "did not change"), "stale coordinate: %s", res);
     CHECK(macro_run(m, mcp, "offscreen", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "off the 1280x800 screen"), "off screen: %s", res);
     CHECK(macro_run(m, mcp, "burst", "{}", vision_ok, NULL, res, sizeof res) == 0 && strstr(res, "(4 steps)"), "repeat: %s", res);
