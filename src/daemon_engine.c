@@ -45,7 +45,7 @@ typedef struct {
     dcap_t cap; int have_audio;
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
-    kbd_t *kbd; int kbd_devs; struct timespec press_at[3];
+    kbd_t *kbd; int kbd_devs; struct timespec press_at[4];
     int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
@@ -413,10 +413,10 @@ static int save_mid(dm_t *d) {                         /* d->mu held */
 /* A momentary button reaches set_param with "on" more than once per press (seen on the Force: one TALK tap = LISTENING then the "heard nothing"
  * error, TYPE armed then disarmed). Ignore a repeat of the same button within 400 ms. */
 static int repeat_press(struct timespec *last, const char *k) {
-    static const char *const names[3] = { "talk", "typing", "run" };
+    static const char *const names[4] = { "talk", "typing", "run", "keys" };
     if (getenv("DAEMON_NO_DEBOUNCE")) return 0;   /* tests press the same button twice in a row */
     struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
-    for (int i = 0; i < 3; i++) if (!strcmp(k, names[i])) {
+    for (int i = 0; i < 4; i++) if (!strcmp(k, names[i])) {
         long ms = (now.tv_sec - last[i].tv_sec) * 1000 + (now.tv_nsec - last[i].tv_nsec) / 1000000;
         if (last[i].tv_sec && ms < 400) return 1;
         last[i] = now; return 0;
