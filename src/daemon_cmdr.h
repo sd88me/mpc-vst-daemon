@@ -14,6 +14,8 @@ void cmdr_close(cmdr_t *c);
 int cmdr_plugins_summary(cmdr_t *c, char *buf, size_t cap);
 /* One plugin's parameters: [{i, name, value, text}] ; -1 if the id is unknown. */
 int cmdr_plugin_params(cmdr_t *c, int id, char *buf, size_t cap);
+/* The same, only the parameters whose name contains one of the |-separated words (case-insensitive); NULL or "" keeps all. */
+int cmdr_plugin_params_match(cmdr_t *c, int id, const char *match, char *buf, size_t cap);
 /* The project snapshot (the addin's JSON), asked for over the socket. */
 int cmdr_project(cmdr_t *c, char *buf, size_t cap);
 /* setParameter on an instance. Waits up to wait_ms for the addin to report the value text back; text gets it ("" if none came). */

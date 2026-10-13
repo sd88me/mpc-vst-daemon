@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 sd88me */
 #define _GNU_SOURCE
+#include <ctype.h>
 #include "daemon_cmdr.h"
 #include "daemon_json.h"
 #include <arpa/inet.h>
@@ -159,6 +160,35 @@ int cmdr_plugin_params(cmdr_t *c, int id, char *buf, size_t cap) {
         if ((int)djson_num(p, "id", -1) == id) {
             jv *ps = djson_get(p, "params"); if (!ps) return djson_write(&(jv){ 'a', 0, NULL, NULL, NULL, NULL }, buf, cap);
             return djson_write(ps, buf, cap);
+        }
+    snprintf(buf, cap, "[]"); return -1;
+}
+
+static int name_matches(const char *name, const char *match) {
+    char w[64]; const char *p = match;
+    while (*p) {
+        size_t n = strcspn(p, "|"); if (n >= sizeof w) n = sizeof w - 1;
+        memcpy(w, p, n); w[n] = 0; p += strlen(p) > n ? n + (p[n] == '|') : n;
+        if (!w[0]) continue;
+        for (const char *h = name; *h; h++) { size_t k = 0; while (w[k] && h[k] && tolower((unsigned char)h[k]) == tolower((unsigned char)w[k])) k++; if (!w[k]) return 1; }
+    }
+    return 0;
+}
+
+int cmdr_plugin_params_match(cmdr_t *c, int id, const char *match, char *buf, size_t cap) {
+    if (!match || !match[0]) return cmdr_plugin_params(c, id, buf, cap);
+    for (jv *p = c->plugins ? c->plugins->kid : NULL; p; p = p->next)
+        if ((int)djson_num(p, "id", -1) == id) {
+            jv *ps = djson_get(p, "params"); size_t n = 0; int any = 0;
+            if (cap < 3) return -1;
+            buf[n++] = '[';
+            for (jv *q = ps ? ps->kid : NULL; q; q = q->next) {
+                if (!name_matches(djson_str(q, "name", ""), match)) continue;
+                jv *nx = q->next; q->next = NULL; char tmp[400]; int w = djson_write(q, tmp, sizeof tmp); q->next = nx;
+                if (w < 0 || n + (size_t)w + 3 > cap) { buf[n] = 0; return -1; }
+                if (any) buf[n++] = ','; memcpy(buf + n, tmp, (size_t)w); n += (size_t)w; any = 1;
+            }
+            buf[n++] = ']'; buf[n] = 0; return (int)n;
         }
     snprintf(buf, cap, "[]"); return -1;
 }

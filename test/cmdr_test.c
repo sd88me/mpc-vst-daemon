@@ -30,6 +30,10 @@ int main(void) {
     n = cmdr_plugin_params(c, 5, buf, sizeof buf);
     CHECK(n > 0 && strstr(buf, "\"name\":\"Cutoff\"") && strstr(buf, "\"text\":\"70%\""), "params %s", buf);
     CHECK(cmdr_plugin_params(c, 99, buf, sizeof buf) == -1, "unknown plugin id");
+    n = cmdr_plugin_params_match(c, 5, "CUT|nothing", buf, sizeof buf);
+    CHECK(n > 0 && buf[0] == '[' && strstr(buf, "\"name\":\"Cutoff\"") && !strstr(buf, "\"name\":\"Resonance\""), "match keeps only the named params: %s", buf);
+    CHECK(cmdr_plugin_params_match(c, 5, "zzz", buf, sizeof buf) == 2 && !strcmp(buf, "[]"), "no match is an empty list");
+    CHECK(cmdr_plugin_params_match(c, 99, "cut", buf, sizeof buf) == -1, "match with an unknown id");
     n = cmdr_project(c, buf, sizeof buf);
     CHECK(n > 0 && strstr(buf, "\"tempo\":124") && strstr(buf, "\"key\":\"F Minor\""), "project %s", buf);
 

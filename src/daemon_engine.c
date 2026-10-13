@@ -161,7 +161,8 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         for (int i = 0; i < t.n; i++) {
             rs[i] = NULL;
             if (agent_tool_is_read_only(t.calls[i].name)) {
-                rs[i] = tool_res + used; agent_exec(c, &t.calls[i], play_part_cb, ui_cb, &uc, rs[i], 200000 / AGENT_MAX_CALLS); used += strlen(rs[i]) + 1;
+                rs[i] = tool_res + used; agent_exec(c, &t.calls[i], play_part_cb, ui_cb, &uc, rs[i], 200000 - used); used += strlen(rs[i]) + 1;
+                { char lp[300]; snprintf(lp, sizeof lp, "%s/agent.log", d->dir); FILE *lf = fopen(lp, "a"); if (lf) { fprintf(lf, "%s %.200s -> %.160s (%zu bytes)\n", t.calls[i].name, t.calls[i].args, rs[i], strlen(rs[i])); fclose(lf); } }
             } else mut++;
         }
         if (!mut) { agent_hist_model(&h, &t); agent_hist_results(&h, &t, (const char *const *)rs); agent_turn_free(&t); continue; }
@@ -333,7 +334,7 @@ static void *create(const char *data_dir) {
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
     kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
     d->kbd = kbd_start(d->input_dir, d->input_test, cb);
-    { char lp[300]; snprintf(lp, sizeof lp, "%s/kbd.log", d->dir); remove(lp); kbd_set_log(d->kbd, lp); }
+    { char lp[300]; snprintf(lp, sizeof lp, "%s/kbd.log", d->dir); remove(lp); kbd_set_log(d->kbd, lp); snprintf(lp, sizeof lp, "%s/agent.log", d->dir); remove(lp); }
     pthread_create(&d->th_drop, NULL, drop_watch, d); d->drop_up = 1;
     return d;
 }

@@ -60,7 +60,7 @@ static const char *TOOLS =
  "[{\"functionDeclarations\":["
  "{\"name\":\"get_project\",\"description\":\"The MPC project as last saved: tempo, key, the current sequence, and every track with its name, kind and plugin. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}},"
  "{\"name\":\"list_plugins\",\"description\":\"The plugin instances currently loaded in MPC: id, name, vendor and parameter count. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}},"
- "{\"name\":\"get_plugin_params\",\"description\":\"All parameters of one plugin instance with their index, name, 0-1 value and the text MPC shows. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"}},\"required\":[\"id\"]}},"
+ "{\"name\":\"get_plugin_params\",\"description\":\"Parameters of one plugin instance with their index, name, 0-1 value and the text MPC shows. A synth can have hundreds: pass match, words separated by | (for example attack|decay|cutoff|filter|env), to get only those whose name contains one. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"},\"match\":{\"type\":\"STRING\"}},\"required\":[\"id\"]}},"
  "{\"name\":\"set_param\",\"description\":\"Set one plugin parameter to a value between 0 and 1. The result reports the text MPC then shows, so a value can be corrected.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"},\"index\":{\"type\":\"INTEGER\"},\"value\":{\"type\":\"NUMBER\"}},\"required\":[\"id\",\"index\",\"value\"]}},"
  "{\"name\":\"transport\",\"description\":\"Press a transport button on the MPC.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"cmd\":{\"type\":\"STRING\",\"enum\":[\"play\",\"stop\",\"continue\",\"record\"]}},\"required\":[\"cmd\"]}},"
  "{\"name\":\"play_part\",\"description\":\"Make a MIDI part and loop it from Daemon's own MIDI port, in time with the MPC transport. Notes use beats from the start of the part.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{"
@@ -144,7 +144,7 @@ int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn u
     if (!a) return jerr(result, cap, "bad arguments");
     if (!strcmp(call->name, "get_project")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_project(c, result, cap) < 0) rc = -1; }
     else if (!strcmp(call->name, "list_plugins")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugins_summary(c, result, cap) < 0) rc = jerr(result, cap, "too many plugins to list"); }
-    else if (!strcmp(call->name, "get_plugin_params")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugin_params(c, (int)djson_num(a, "id", -1), result, cap) < 0) rc = jerr(result, cap, "no plugin with that id"); }
+    else if (!strcmp(call->name, "get_plugin_params")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugin_params_match(c, (int)djson_num(a, "id", -1), djson_str(a, "match", ""), result, cap) < 0) rc = jerr(result, cap, "no plugin with that id, or the list is too long: pass match"); }
     else if (!strcmp(call->name, "set_param")) {
         char text[96];
         if (!c) rc = jerr(result, cap, "no commander connection");
