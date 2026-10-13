@@ -178,11 +178,12 @@ int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
     int id = (int)djson_num(a, "id", -1);
     char plug[80] = "", pname[80] = "";
     if (c && !strcmp(call->name, "set_param")) {
-        char pj[8192]; if (cmdr_plugin_params(c, id, pj, sizeof pj) >= 0) {
+        char *pj = malloc(200000); if (pj && cmdr_plugin_params(c, id, pj, 200000) >= 0) {
             jv *ps = djson_parse(pj, strlen(pj));
             for (jv *p = ps ? ps->kid : NULL; p; p = p->next) if ((int)djson_num(p, "i", -1) == (int)djson_num(a, "index", -2)) snprintf(pname, sizeof pname, "%s", djson_str(p, "name", ""));
             djson_free(ps);
         }
+        free(pj);
         char sj[8192]; if (cmdr_plugins_summary(c, sj, sizeof sj) > 0) {
             jv *ss = djson_parse(sj, strlen(sj));
             for (jv *p = ss ? ss->kid : NULL; p; p = p->next) if ((int)djson_num(p, "id", -1) == id) snprintf(plug, sizeof plug, "%s", djson_str(p, "name", ""));

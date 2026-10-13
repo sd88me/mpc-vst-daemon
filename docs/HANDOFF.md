@@ -48,3 +48,6 @@ docs/NOTES.md entries in `mpc-vst-plugins` with dates (verified device facts abo
 
 ## Verified 2026-10-12 (late)
 Typed prompt (remote virtual keyboard) -> agent plan (make part + clip into track 3) -> RUN -> `RAN 2 STEPS`; Dark_Chords.mid saved and the clip appeared on track 3 (a new Drum track) in the clip matrix. Left in the user's project.
+
+## Verified 2026-10-12 (night)
+`load_instrument` ("load the instrument profit-08 on track 3" -> RAN 1 STEPS, Profit-08 id 23, 282 params) and sound shaping with `set_param` ("plucky deadmau5 lead": agent used `get_plugin_params` with `match`, 6 set_param steps: Osc2 Fine +10, FEnv Amt +77, short AEnv/FEnv decay). Pitfalls met: a prompt that does not name a loaded synth got "load Profit-08 on track 1" (would have replaced the JV-880: always read the plan before RUN); the project state restores the last plan (a stale "Bassline" plan showed after a reload: do not RUN it); after a macro the screen is the Mixer, reopen Daemon (tap its insert) before TYPE; Agent toggle defaults to on after a reload. `engine/agent.log` has each read-only tool call. Test clutter left: an unsaved Plugin track 3 with Profit-08 (reload `daemon-test` to drop it).

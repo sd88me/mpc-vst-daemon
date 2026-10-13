@@ -186,7 +186,8 @@ int cmdr_plugin_params_match(cmdr_t *c, int id, const char *match, char *buf, si
                 if (!name_matches(djson_str(q, "name", ""), match)) continue;
                 jv *nx = q->next; q->next = NULL; char tmp[400]; int w = djson_write(q, tmp, sizeof tmp); q->next = nx;
                 if (w < 0 || n + (size_t)w + 3 > cap) { buf[n] = 0; return -1; }
-                if (any) buf[n++] = ','; memcpy(buf + n, tmp, (size_t)w); n += (size_t)w; any = 1;
+                if (any) buf[n++] = ',';
+                memcpy(buf + n, tmp, (size_t)w); n += (size_t)w; any = 1;
             }
             buf[n++] = ']'; buf[n] = 0; return (int)n;
         }
