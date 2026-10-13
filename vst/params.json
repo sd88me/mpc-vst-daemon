@@ -408,6 +408,12 @@
    "name": "Noop",
    "type": "trigger",
    "momentary": true
+  },
+  {
+   "key": "addins",
+   "name": "Add-ins",
+   "display": "string",
+   "poll": false
   }
  ]
 }

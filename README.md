@@ -23,6 +23,13 @@ Status (offline only; nothing has run on a device yet):
 - `vst/`: `vst.json`, `params.json`, `layout.conf`, `skin.css`, `art/make_face.py`. `tools/test_port.sh vst/vst.json` (from
   mpc-vst-plugins) passes; `tools/build_port.sh` builds the armhf `.so`.
 
+## Requirements
+Daemon needs two add-ins installed on the device for everything beyond making a clip from a prompt:
+- **mpc-addin-commander** (port 6730): reads and sets the parameters of other plugins, the project and the transport. Without it the plugin and project tools are off.
+- **mpc-addin-remote** (port 6720): screen, touch and hardware buttons. Without it the tap macros (select track, load efx / instrument, import clip) are off.
+
+Daemon checks both ports every ten seconds and the skin shows which are missing. Typing and talking, and generating and saving a part, work without them.
+
 Setup on a device: `engine/daemon.conf` inside the plugin folder (it survives upgrades) with `api_key=...` (optional `model=`, `commander=127.0.0.1:6730`).
 Agent mode needs the commander addin installed. Loading a plugin / choosing a track needs a `macros.json` recorded on the device and the remote addin (docs/MACROS.md); none is recorded yet.
 

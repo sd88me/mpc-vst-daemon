@@ -19,6 +19,13 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 enum { S_READY, S_LISTENING, S_THINKING, S_DONE, S_ERROR, S_TYPING, S_PLAN };
 static const char *TYPES[] = { "Monophony", "Melody", "Chords", "Melody+Chords", "Beats" };
@@ -39,6 +46,7 @@ typedef struct {
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
     kbd_t *kbd; int kbd_devs; struct timespec press_at[3];
+    int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
     aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
@@ -304,14 +312,31 @@ static void clips_dir_resolve(dm_t *d) {
     else if (d->clips_dir[0] != '/') { char t[300]; snprintf(t, sizeof t, "%s/%s", root[0] ? root : d->dir, d->clips_dir); snprintf(d->clips_dir, sizeof d->clips_dir, "%s", t); }
 }
 
+/* Is something listening there? A plain TCP connect with a 300 ms limit (the add-ins are on this device, 127.0.0.1 by default). */
+static int port_open(const char *host, int port) {
+    struct sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port);
+    if (inet_pton(AF_INET, host, &a.sin_addr) != 1) return 0;
+    int f = socket(AF_INET, SOCK_STREAM, 0); if (f < 0) return 0;
+    fcntl(f, F_SETFL, fcntl(f, F_GETFL) | O_NONBLOCK);
+    int ok = 0;
+    if (connect(f, (struct sockaddr *)&a, sizeof a) == 0) ok = 1;
+    else if (errno == EINPROGRESS) { struct pollfd p = { f, POLLOUT, 0 }; int e = 0; socklen_t l = sizeof e; ok = poll(&p, 1, 300) == 1 && getsockopt(f, SOL_SOCKET, SO_ERROR, &e, &l) == 0 && e == 0; }
+    close(f); return ok;
+}
+
 /* engine/prompt.txt: a text file dropped there (ssh, a phone's file share) is a typed prompt; read once, then deleted */
 static void *drop_watch(void *arg) {
     dm_t *d = arg; char path[300]; snprintf(path, sizeof path, "%s/prompt.txt", d->dir);
-    for (;;) {
+    for (int tick = 0;; tick++) {
+        if (tick % 20 == 0) {
+            pthread_mutex_lock(&d->mu); char ch[48], rh[48]; int cp = d->cmdr_port, rp = d->remote_port; snprintf(ch, sizeof ch, "%s", d->cmdr_host); snprintf(rh, sizeof rh, "%s", d->remote_host); pthread_mutex_unlock(&d->mu);
+            int c = port_open(ch, cp), r = port_open(rh, rp);
+            pthread_mutex_lock(&d->mu); if (c != d->has_cmdr || r != d->has_remote) d->rev++; d->has_cmdr = c; d->has_remote = r; pthread_mutex_unlock(&d->mu);
+        }
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
         { char lp[300]; snprintf(lp, sizeof lp, "%s/daemon.log", d->dir); FILE *lf = fopen(lp, "w");
           if (lf) { pthread_mutex_lock(&d->mu); long mbad = 0; int mrc = 0; if (d->io->midi_stat && d->midi) d->io->midi_stat(d->midi, &mbad, &mrc);
-              fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\nmidi_bad %ld last_rc %d\n",
+              fprintf(lf, "commander %d remote %d\n", d->has_cmdr, d->has_remote); fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\nmidi_bad %ld last_rc %d\n",
                       d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state, d->status, mbad, mrc);
               pthread_mutex_unlock(&d->mu); fclose(lf); } }
         FILE *f = fopen(path, "r"); if (!f) continue;
@@ -484,6 +509,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
     else if (!strcmp(k, "kb")) r = snprintf(b, n, "%d", d->kb);
+    else if (!strcmp(k, "addins")) r = put_text(b, n, d->has_cmdr && d->has_remote ? "add-ins: commander OK, remote OK" : !d->has_cmdr && !d->has_remote ? "add-ins MISSING: install commander and remote (plugin and screen tools are off)" : !d->has_cmdr ? "commander MISSING: plugin and project tools are off" : "remote MISSING: track, plugin loading and clip import are off");
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
