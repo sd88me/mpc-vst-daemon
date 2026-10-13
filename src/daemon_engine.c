@@ -7,6 +7,7 @@
 #include "engine.h"
 #include "daemon_core.h"
 #include "daemon_io.h"
+#include <ctype.h>
 #include "daemon_kbd.h"
 #include <time.h>
 #include "daemon_agent.h"
@@ -38,6 +39,7 @@ typedef struct {
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
     kbd_t *kbd; int kbd_devs; struct timespec press_at[3];
+    int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
     aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
     macros_t *macros; char remote_host[48]; int remote_port;
@@ -264,6 +266,7 @@ static void *worker(void *arg) {
 }
 
 static void request(dm_t *d, int with_audio) {       /* d->mu held */
+    d->kb = 0;
     if (!d->key[0]) { set_status(d, S_ERROR, "ERROR %s", "no api_key in daemon.conf"); return; }
     d->with_audio = with_audio; d->pending = 1; d->mode = d->agent ? 2 : 1; set_status(d, S_THINKING, "THINKING%s", ""); pthread_cond_signal(&d->cv);
 }
@@ -399,6 +402,13 @@ static int repeat_press(struct timespec *last, const char *k) {
 static void set_param(void *inst, const char *k, const char *v) {
     dm_t *d = inst; int on = atof(v) > 0.5;
     if (on && repeat_press(d->press_at, k)) return;
+    if (on && !strncmp(k, "k_", 2) && !getenv("DAEMON_NO_DEBOUNCE")) {   /* a drawn key also arrives twice per tap: drop a repeat of the same key within 120 ms */
+        struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+        long ms = (now.tv_sec - d->kb_at.tv_sec) * 1000 + (now.tv_nsec - d->kb_at.tv_nsec) / 1000000;
+        int same = !strcmp(d->kb_last, k + 2) && d->kb_at.tv_sec && ms < 120;
+        snprintf(d->kb_last, sizeof d->kb_last, "%.7s", k + 2); d->kb_at = now;
+        if (same) return;
+    }
     pthread_mutex_lock(&d->mu);
     if (!strcmp(k, "talk") && on) {
         if (d->state == S_LISTENING) {
@@ -411,6 +421,24 @@ static void set_param(void *inst, const char *k, const char *v) {
             d->transcript[0] = 0; set_status(d, S_TYPING, d->kbd_devs ? "TYPING: Enter sends, Esc cancels%s" : "TYPING: no keyboard yet, connect one%s", "");
             kbd_arm(d->kbd, 1);
         }
+    } else if (!strcmp(k, "keys") && on) {              /* the KB button: show or hide the drawn keyboard (needs no hardware keyboard) */
+        if (d->kb) { d->kb = 0; if (d->state == S_TYPING) { d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); } d->rev++; }
+        else if (d->state != S_THINKING && d->state != S_LISTENING) {
+            if (d->state == S_TYPING) kbd_arm(d->kbd, 0);
+            d->kb = 1; d->kbuf[0] = 0; snprintf(d->transcript, sizeof d->transcript, "> _");
+            set_status(d, S_TYPING, "TYPING: touch the keys, SEND asks%s", "");
+        }
+    } else if (!strncmp(k, "k_", 2) && on && d->kb) {   /* a drawn key */
+        const char *c = k + 2; size_t l = strlen(d->kbuf);
+        if (!strcmp(c, "hide")) { d->kb = 0; d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); }
+        else if (!strcmp(c, "clear")) d->kbuf[0] = 0;
+        else if (!strcmp(c, "back")) { if (l) d->kbuf[l - 1] = 0; }
+        else if (!strcmp(c, "send")) { if (l) { snprintf(d->typed, sizeof d->typed, "%s", d->kbuf); d->have_audio = 0; snprintf(d->transcript, sizeof d->transcript, "%s", d->typed); request(d, 0); } }
+        else if (l + 1 < sizeof d->kbuf && l + 1 < sizeof d->typed && (!strcmp(c, "space") ? l && d->kbuf[l - 1] != ' ' : c[0] && !c[1])) {
+            d->kbuf[l] = !strcmp(c, "space") ? ' ' : (char)tolower((unsigned char)c[0]); d->kbuf[l + 1] = 0;
+        }
+        if (d->kb) snprintf(d->transcript, sizeof d->transcript, "> %s_", d->kbuf);
+        d->rev++;
     } else if (!strcmp(k, "run") && on) {
         if (d->state == S_PLAN && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
         else set_status(d, d->state == S_THINKING ? S_THINKING : S_ERROR, "%s", d->state == S_THINKING ? "THINKING" : "ERROR nothing to run: ask for something with AGENT on");
@@ -455,6 +483,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "bars")) r = snprintf(b, n, "%d", d->bars);
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
+    else if (!strcmp(k, "kb")) r = snprintf(b, n, "%d", d->kb);
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */

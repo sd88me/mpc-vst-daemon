@@ -143,6 +143,271 @@
    "name": "Plan",
    "display": "string",
    "poll": false
+  },
+  {
+   "key": "keys",
+   "name": "Keys",
+   "momentary": true
+  },
+  {
+   "key": "kb",
+   "name": "Keyboard shown",
+   "options": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "key": "k_Q",
+   "name": "Key Q",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_W",
+   "name": "Key W",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_E",
+   "name": "Key E",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_R",
+   "name": "Key R",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_T",
+   "name": "Key T",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_Y",
+   "name": "Key Y",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_U",
+   "name": "Key U",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_I",
+   "name": "Key I",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_O",
+   "name": "Key O",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_P",
+   "name": "Key P",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_A",
+   "name": "Key A",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_S",
+   "name": "Key S",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_D",
+   "name": "Key D",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_F",
+   "name": "Key F",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_G",
+   "name": "Key G",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_H",
+   "name": "Key H",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_J",
+   "name": "Key J",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_K",
+   "name": "Key K",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_L",
+   "name": "Key L",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_Z",
+   "name": "Key Z",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_X",
+   "name": "Key X",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_C",
+   "name": "Key C",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_V",
+   "name": "Key V",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_B",
+   "name": "Key B",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_N",
+   "name": "Key N",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_M",
+   "name": "Key M",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_1",
+   "name": "Key 1",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_2",
+   "name": "Key 2",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_3",
+   "name": "Key 3",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_4",
+   "name": "Key 4",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_5",
+   "name": "Key 5",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_6",
+   "name": "Key 6",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_7",
+   "name": "Key 7",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_8",
+   "name": "Key 8",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_9",
+   "name": "Key 9",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_0",
+   "name": "Key 0",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_space",
+   "name": "Key space",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_back",
+   "name": "Key back",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_clear",
+   "name": "Key clear",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_send",
+   "name": "Key send",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "k_hide",
+   "name": "Key hide",
+   "type": "trigger",
+   "momentary": true
+  },
+  {
+   "key": "noop",
+   "name": "Noop",
+   "type": "trigger",
+   "momentary": true
   }
  ]
 }

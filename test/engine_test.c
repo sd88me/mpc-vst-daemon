@@ -120,6 +120,14 @@ int main(void) {
         close(wfd);
         E->set_param(t, "typing", "1"); E->set_param(t, "typing", "1");       /* arm, then press again to cancel */
         CHECK(!strcmp(get(t, "status"), "READY") && !strcmp(get(t, "face"), "Idle"), "cancel by pressing TYPE again: '%s'", get(t, "status"));
+        /* the drawn keyboard: KEYS shows it, keys build the text, SEND asks */
+        E->set_param(t, "keys", "1");
+        CHECK(!strcmp(get(t, "kb"), "1") && !strcmp(get(t, "face"), "Typing"), "keys: kb '%s' face '%s'", get(t, "kb"), get(t, "face"));
+        E->set_param(t, "k_H", "1"); E->set_param(t, "k_I", "1"); E->set_param(t, "k_space", "1"); E->set_param(t, "k_X", "1"); E->set_param(t, "k_back", "1"); E->set_param(t, "k_Y", "1");
+        CHECK(!strcmp(get(t, "transcript"), "> hi y_"), "drawn text '%s'", get(t, "transcript"));
+        pp = fake.posts; E->set_param(t, "k_send", "1");
+        for (int i = 0; i < 400 && strncmp(get(t, "status"), "DONE", 4); i++) usleep(10000);
+        CHECK(fake.posts == pp + 1 && strstr(fake.body, "Request: hi y") && !strcmp(get(t, "kb"), "0"), "drawn send: posts %d kb '%s' body %.100s", fake.posts - pp, get(t, "kb"), fake.body);
         E->destroy(t);
     }
 
