@@ -297,18 +297,29 @@
    },
    "steps": [
     {
-     "press": "MATRIX",
-     "label": "clip matrix"
+     "press": "MIXER",
+     "label": "mixer (every device has one; the matrix is Force only)"
     },
     {
      "wait_stable": 2000
     },
     {
-     "expect": "matrix_bar"
+     "tap": [
+      770,
+      770
+     ],
+     "require_change": false,
+     "label": "EFFECTS tab (any tab shows the headers)"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "expect": "mixer_effects"
     },
     {
      "tap": [
-      "72 + 146*(track-1)",
+      "80 + 160*(track-1)",
       40
      ],
      "require_change": false,

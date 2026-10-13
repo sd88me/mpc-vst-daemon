@@ -77,7 +77,7 @@ to find the next free slot of a track.
   empty lower rows of the matrix and the black bottom bar.
 
 ## Recorded: select_track and load_plugin (Force, MPC OS 3.9.1)
-- Track headers of the clip matrix (MATRIX button) are at x = 72 + 146*(track-1), y = 40 (8 tracks fit); a double tap on a header opens Track Settings, whose Plugin
+- `select_track` goes through the **Mixer** (MIXER button; the clip matrix and its MATRIX button exist on the Force only): the strip headers are at x = 80 + 160*(track-1), y = 40 (8 tracks fit). On the Force's clip matrix the headers are at x = 72 + 146*(track-1) instead; a double tap on a header opens Track Settings, whose Plugin
   field only shows the instrument and does not open a list. Effects load from the **Mixer, EFFECTS tab**: the insert slots of a track strip sit at x = 80 + 160*(track-1),
   y = 370 + 86*(slot-1); tapping an empty one opens the plugin picker (TYPE tab; the VST group is the last row and stays expanded between openings), SELECT is at (960, 770).
 - Step options added for this: `skip_if` (a fingerprint name; the step is skipped when the screen already looks like it, used so the VST group is not collapsed by a second tap)
