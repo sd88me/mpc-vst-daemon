@@ -40,7 +40,7 @@ fingerprint, no model), `tools/macro_run.c` (runs a macro through an SSH tunnel 
 
 ## Not tested on the device yet
 Mic capture, a real Bluetooth keyboard (the remote add-in's virtual keyboard `event3` works: TYPE -> text -> Enter, 2026-10-12; `engine/kbd.log` lists each device scan outcome; momentary buttons deliver `on` twice per tap, debounced 400 ms in set_param), commander transport state (verified 2026-10-12 through an SSH tunnel with test/live_cmdr: playing true/false, tempo, bar/beat, source mmc; MPC Commander In needs Sync on and Send MMC on; the client only reads pushes while a request waits),
-vision step (`find_tap`). Skin: live text is MPC's own font, not monospace.
+(`find_tap` and `load_plugin` are now verified, see docs/MACROS.md). Skin: live text is MPC's own font, not monospace.
 
 ## Before any public release
 Add aarch64 target (Gen2 default per repo policy), create the GitHub repo (ask the user first), catalog entry PR + `catalog_check.py --catalog`, `tested.json`,
