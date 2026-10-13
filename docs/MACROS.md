@@ -4,7 +4,7 @@ Daemon's agent can select a track and load a plugin onto it by driving MPC's own
 (jacob-sabella/mpc-addin-remote, MCP on `127.0.0.1:6720`). Nothing in the commander addin can do this, and MPC has no API for it.
 
 Touch positions depend on the device and its screen layout, so they are **data you record on your own device**, in
-`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_plugin` were recorded 2026-10-12 (load_plugin awaits an end-to-end agent run).**
+`macros.json` next to `daemon.conf`. Without that file the agent is simply not offered the two tools. **Status: the engine is tested offline against a fake remote addin, and `import_clip` has been recorded and run on a Force (MPC OS 3.9.1, 2026-10-12, `docs/examples/macros.force-mpc-os-3.9.1.json`). `select_track` and `load_plugin` were recorded 2026-10-12 (load_plugin verified end to end: "load the plugin AW Tape - TapeHack2 on track 3" -> plan -> RUN -> TapeHack2 in track 3 insert 1, vision `find_tap` included).**
 
 ## Format
 ```json
