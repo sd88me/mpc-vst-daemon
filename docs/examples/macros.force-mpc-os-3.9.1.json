@@ -549,6 +549,108 @@
      "wait": 400
     }
    ]
+  },
+  "load_preset": {
+   "params": {
+    "track": {
+     "type": "int",
+     "min": 1,
+     "max": 8
+    },
+    "preset": {
+     "type": "string"
+    },
+    "folder": {
+     "type": "string",
+     "optional": true
+    }
+   },
+   "steps": [
+    {
+     "press": "MIXER",
+     "label": "mixer"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "tap": [
+      770,
+      770
+     ],
+     "require_change": false,
+     "label": "EFFECTS tab"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "expect": "mixer_effects"
+    },
+    {
+     "double_tap": [
+      "80 + 160*(track-1)",
+      40
+     ],
+     "require_change": true,
+     "label": "track title: Track Settings"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "expect": "track_settings"
+    },
+    {
+     "double_tap": [
+      940,
+      598
+     ],
+     "require_change": true,
+     "label": "the Preset field: the preset list"
+    },
+    {
+     "wait_stable": 1500
+    },
+    {
+     "find_tap": "{folder}",
+     "if_param": "folder",
+     "hint": "a folder row in the preset list (a row with an arrow at its right end) named like this",
+     "tries": 4,
+     "scroll_at": [
+      320,
+      500
+     ],
+     "amount": 400
+    },
+    {
+     "wait": 600
+    },
+    {
+     "find_tap": "{preset}",
+     "hint": "the preset's row in the preset list on the left",
+     "tries": 8,
+     "scroll_at": [
+      320,
+      500
+     ],
+     "amount": 400
+    },
+    {
+     "wait": 1000
+    },
+    {
+     "tap": [
+      1152,
+      86
+     ],
+     "require_change": false,
+     "label": "close Track Settings"
+    },
+    {
+     "wait": 400
+    }
+   ]
   }
  }
 }

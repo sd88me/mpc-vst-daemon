@@ -103,3 +103,6 @@ by itself outside a macro.
 Check the file with `tools/macro_check macros.json` (build line in its header). To record, use the remote addin's web page or MCP
 with `screenshot grid=true` to read coordinates, perform each step once, and write them down; add `require_change` to each touch,
 then run the macro from the agent and watch the screen. Re-record when the MPC OS or the screen layout changes.
+
+## load_preset
+`load_preset(track, preset, folder?)` (agent tool bit 16): Mixer, EFFECTS tab, double tap the track title (Track Settings), double tap the PRESET field (940, 598). The preset list opens as a panel on the left; stock instruments such as Solina keep presets in folders (a row with an arrow), a preset row loads it and returns to Track Settings, then the X (1152, 86) closes. `folder` is optional: a macro parameter with `"optional": true`, and a step with `"if_param": "folder"` runs only when it was given. Plugins without presets (Dexed, Chordsmith, Clementine-XT here) have a PRESET field that does not open. Recorded 2026-10-14 on a Force (MPC OS 3.9.1) with Solina; not run end to end through the agent yet.

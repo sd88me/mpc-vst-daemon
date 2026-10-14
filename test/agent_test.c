@@ -68,6 +68,7 @@ int main(void) {
       actx_t only = { 124, "F Minor", 4, "", 4, 0 }; static char r3[1 << 20]; agent_build_request(&only, &h, r3, sizeof r3);
       CHECK(strstr(r3, "\"import_clip\"") && !strstr(r3, "\"select_track\"") && !strstr(r3, "\"load_efx\""), "only the screen tools whose macro exists are offered");
       actx_t ins = { 124, "F Minor", 4, "", 8, 0 }; static char r4[1 << 20]; agent_build_request(&ins, &h, r4, sizeof r4);
+      { actx_t pr = { 124, "F Minor", 4, "", 16, 0 }; static char r5[1 << 20]; agent_build_request(&pr, &h, r5, sizeof r5); CHECK(strstr(r5, "\"name\":\"load_preset\"") && !strstr(r5, "\"name\":\"load_instrument\""), "load_preset is offered by bit 16"); }
       CHECK(strstr(r4, "\"name\":\"load_instrument\"") && !strstr(r2, "\"name\":\"load_instrument\"") && !strstr(r4, "\"name\":\"load_efx\""), "load_instrument is its own tool, offered by bit 8"); }
     agent_hist_free(&h);
 

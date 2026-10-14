@@ -15,6 +15,7 @@ static const char *GOOD =
  "{\"version\":1,\"screen\":[1280,800],\"macros\":{"
  "\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"press\":\"MENU\"},{\"wait\":10},{\"tap\":[\"100 + 140*(track-1)\",300],\"require_change\":true,\"label\":\"track cell\"}]},"
  "\"load_efx\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"tap\":[640,400]},{\"scroll\":[300,400],\"direction\":\"down\",\"amount\":2},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"},{\"wait_stable\":500}]},"
+ "\"pick\":{\"params\":{\"preset\":{\"type\":\"string\"},\"folder\":{\"type\":\"string\",\"optional\":true}},\"steps\":[{\"find_tap\":\"{folder}\",\"if_param\":\"folder\"},{\"find_tap\":\"{preset}\"}]},"
  "\"stale\":{\"steps\":[{\"tap\":[50,750],\"require_change\":true}]},"
  "\"offscreen\":{\"steps\":[{\"tap\":[2000,10]}]},"
  "\"burst\":{\"steps\":[{\"repeat\":3,\"steps\":[{\"tap\":[10,10]}]}]},"
@@ -68,6 +69,9 @@ int main(void) {
     CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2,\"plugin\":\"Ghost\"}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "could not find on screen") && strstr(res, "no Ghost"), "plugin not on screen: %s", res);
     CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2,\"plugin\":\"9W9\"}", NULL, NULL, res, sizeof res) == -1 && strstr(res, "no vision"), "no vision: %s", res);
     CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "missing parameter plugin"), "no plugin: %s", res);
+    CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\"}", vision_ok, NULL, res, sizeof res) == 0, "optional folder left out: %s", res);
+    CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\",\"folder\":\"\"}", vision_ok, NULL, res, sizeof res) == 0, "empty folder skips the step: %s", res);
+    CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\",\"folder\":\"Ghost\"}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "no Ghost"), "a given folder is looked for: %s", res);
     CHECK(macro_run(m, mcp, "stale", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "did not change"), "stale coordinate: %s", res);
     CHECK(macro_run(m, mcp, "offscreen", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "off the 1280x800 screen"), "off screen: %s", res);
     CHECK(macro_run(m, mcp, "burst", "{}", vision_ok, NULL, res, sizeof res) == 0 && strstr(res, "(4 steps)"), "repeat: %s", res);

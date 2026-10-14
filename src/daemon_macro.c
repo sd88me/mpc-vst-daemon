@@ -56,7 +56,7 @@ static int eval_jv(jv *v, const char **names, const double *vals, int n, double 
 
 /* ---- validation ---- */
 static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "find_empty", "call", "repeat", "expect", NULL };
-static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", "skip_if", "scroll_at", "tries", NULL };
+static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", "skip_if", "scroll_at", "tries", "if_param", NULL };
 static int in_list(const char *k, const char **l) { for (; *l; l++) if (!strcmp(k, *l)) return 1; return 0; }
 
 static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, size_t cap, int depth) {
@@ -183,6 +183,10 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
         i++;
         if (++r->steps > MAX_STEPS_PER_RUN) return fail(r, "%s", "too many steps in one run", i, macro);
         jv *a;
+        if ((a = djson_get(s, "if_param")) && a->t == 's') {   /* only when that text parameter was given */
+            int given = 0; for (int q = 0; q < r->np; q++) if (!strcmp(r->names[q], a->str) && r->svals[q] && r->svals[q][0]) given = 1;
+            if (!given) continue;
+        }
         if ((a = djson_get(s, "skip_if"))) {           /* the screen already looks as this step would leave it: skip it */
             jv *f = djson_get(djson_get(r->m->root, "fingerprints"), a->str), *rg = djson_get(f, "region"); uint8_t want[FP_BYTES], got[FP_BYTES]; char e2[160] = "";
             fp_unhex(djson_str(f, "thumb", ""), want);
@@ -273,6 +277,8 @@ int macro_run(const macros_t *m, mcp_t *mcp, const char *name, const char *args_
     jv *ps = djson_get(mc, "params");
     for (jv *p = ps ? ps->kid : NULL; p && r.np < MAX_PARAMS; p = p->next) {
         jv *av = djson_get(args, p->key); const char *type = djson_str(p, "type", "int");
+        int opt = djson_get(p, "optional") && djson_get(p, "optional")->t == 'b' && djson_get(p, "optional")->num != 0;
+        if (opt && !strcmp(type, "string") && (!av || (av->t == 's' && !av->str[0]))) { r.names[r.np] = p->key; r.svals[r.np] = ""; r.np++; continue; }   /* an optional text left out: steps with if_param on it are skipped */
         if (!av) { snprintf(result, cap, "missing parameter %s", p->key); djson_free(args); return -1; }
         r.names[r.np] = p->key;
         if (!strcmp(type, "string")) { if (av->t != 's' || !av->str[0] || strlen(av->str) > 80) { snprintf(result, cap, "parameter %s must be a short text", p->key); djson_free(args); return -1; } r.svals[r.np] = av->str; }

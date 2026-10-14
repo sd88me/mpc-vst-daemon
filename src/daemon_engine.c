@@ -156,7 +156,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     char note[300] = "";   /* what the add-in probe saw: tell the model what it can't use, so it says so instead of planning it */
     if (!c) snprintf(note, sizeof note, "The commander addin is not reachable, so project and plugin tools will fail; say so. ");
     if (!s->has_remote) { size_t l = strlen(note); snprintf(note + l, sizeof note - l, "The remote addin is not reachable, so there are no screen tools (select a track, load a plugin or instrument, import a clip); say so if asked for one."); }
-    int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0);
+    int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0) | (macros_has(d->macros, "load_preset") ? 16 : 0);
     actx_t ctx = { s->bpm, s->scale, s->bars, note, s->has_remote ? ui : 0, s->channel };
     uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
