@@ -338,6 +338,7 @@ static void *drop_watch(void *arg) {
             pthread_mutex_lock(&d->mu); char ch[48], rh[48]; int cp = d->cmdr_port, rp = d->remote_port; snprintf(ch, sizeof ch, "%s", d->cmdr_host); snprintf(rh, sizeof rh, "%s", d->remote_host); pthread_mutex_unlock(&d->mu);
             int c = port_open(ch, cp), r = port_open(rh, rp);
             pthread_mutex_lock(&d->mu); int t = 0; if (d->tap) { uint64_t w = tap_pos(d->tap); t = w != d->tap_seen; d->tap_seen = w; }
+            if (t && d->state == S_ERROR && !strncmp(d->status, "ERROR no mic", 12)) set_status(d, S_READY, "READY%s", "");   /* the tap arrived: the old complaint no longer holds */
             if (c != d->has_cmdr || r != d->has_remote || t != d->has_tap) d->rev++; d->has_cmdr = c; d->has_remote = r; d->has_tap = t; pthread_mutex_unlock(&d->mu);
         }
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
