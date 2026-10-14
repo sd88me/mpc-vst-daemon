@@ -22,7 +22,7 @@ static void wait_not_thinking(void *i) {
     for (int t = 0; t < 400; t++) { if (strncmp(get(i, "status"), "THINKING", 8)) return; usleep(10000); }
     printf("timeout waiting for the worker\n");
 }
-static tap_ring_t *ring;   /* the Daemon Tap's side: what it hears goes in here, Daemon's render() takes it out */
+static tap_ring_t *ring;   /* the Daemon Ear's side: what it hears goes in here, Daemon's render() takes it out */
 static void hear(void *i, const int16_t *in) { int16_t out[256]; tap_write(ring, in, 128); E->render(i, out, 128); }
 static void speak(void *i, int loud) {
     int16_t in[256];
@@ -43,7 +43,7 @@ int main(void) {
     E = mpc_engine();
     char dir[] = "/tmp/daemon_eng_XXXXXX"; if (!mkdtemp(dir)) return 1;
 
-    /* no Daemon Tap inserted: TALK says so instead of listening to nothing */
+    /* no Daemon Ear inserted: TALK says so instead of listening to nothing */
     { char save[300]; snprintf(save, sizeof save, "%s", getenv("DAEMON_TAP_PATH")); setenv("DAEMON_TAP_PATH", "/tmp/daemon_no_such_tap", 1);
       void *n = E->create(dir); E->set_param(n, "talk", "1");
       CHECK(!strncmp(get(n, "status"), "ERROR no mic", 12), "no tap: '%s'", get(n, "status")); E->destroy(n); setenv("DAEMON_TAP_PATH", save, 1); }

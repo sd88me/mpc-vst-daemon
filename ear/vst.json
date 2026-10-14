@@ -1,9 +1,9 @@
 {
- "name": "Daemon Tap",
+ "name": "Daemon Ear",
  "vendor": "sd88me",
- "uid": "DaTp",
+ "uid": "DaEr",
  "version": 1000,
- "so": "daemontap.so",
+ "so": "daemonear.so",
  "params": "params.json",
  "effect": true,
  "build": {

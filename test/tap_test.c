@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* The Daemon Tap engine: audio passes through unchanged and a copy reaches a reader of the shared ring. */
+/* The Daemon Ear engine: audio passes through unchanged and a copy reaches a reader of the shared ring. */
 #include "engine.h"
 #include <stdlib.h>
 #include <unistd.h>

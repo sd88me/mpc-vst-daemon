@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 sd88me
  *
- * The audio the Daemon Tap effect hears, handed to Daemon (the instrument): a ring of 44.1 kHz int16 stereo frames in a file in
+ * The audio the Daemon Ear effect hears, handed to Daemon (the instrument): a ring of 44.1 kHz int16 stereo frames in a file in
  * /dev/shm that both plugins map (they live in the same MPC process, but separate shared objects). The tap writes in its audio
  * callback, Daemon reads in its own: no locks, only the write position is shared (a 64-bit counter of frames ever written).
  * DAEMON_TAP_PATH overrides the file (tests). */
