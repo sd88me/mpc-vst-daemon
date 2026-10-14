@@ -23,3 +23,5 @@ timeout 60 /tmp/daemon_macro_test
 python3 test/png_fixture.py /tmp/daemon_fp_fixtures
 gcc -std=gnu11 -Wall -Wextra -g -O1 -fsanitize=address,undefined src/daemon_fp.c src/daemon_mcp.c src/daemon_json.c test/fp_test.c -lm -ldl -o /tmp/daemon_fp_test
 timeout 60 /tmp/daemon_fp_test /tmp/daemon_fp_fixtures
+gcc -std=gnu11 -Wall -Wextra -g -O1 -fsanitize=address,undefined -Isrc -I"${MPC_VST:-$HOME/mpc-vst-plugins}/wrapper" src/daemon_tap_engine.c test/tap_test.c -lm -o /tmp/daemon_tap_test
+/tmp/daemon_tap_test

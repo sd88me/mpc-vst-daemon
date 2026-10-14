@@ -15,11 +15,11 @@ def key(name, w, label, fill=FACE, ink=AMBER, size=24, stroke=LINE):
         + '<text x="%g" y="%g" font-family="Titillium Web" font-size="%d" font-weight="700" fill="%s" text-anchor="middle">%s</text>' % (w / 2, 24 + size * 0.36, size, ink, label))
 
 for c in "QWERTYUIOPASDFGHJKLZXCVBNM1234567890":
-    key("key_%s.svg" % c, 86, c)
-key("key_space.svg", 520, "SPACE", size=16)
-key("key_back.svg", 180, "BACK", size=18)
-key("key_clear.svg", 180, "CLEAR", size=18)
-key("key_hide.svg", 180, "HIDE", size=18, ink=DIM)
-key("key_send.svg", 180, "SEND", fill=AMBER, ink=BG, size=20, stroke=AMBER)
+    key("key_%s.svg" % c, 100, c)
+key("key_space.svg", 600, "SPACE", size=16)
+key("key_back.svg", 160, "BACK", size=18)
+key("key_clear.svg", 160, "CLEAR", size=18)
+key("key_hide.svg", 160, "HIDE", size=18, ink=DIM)
+key("key_send.svg", 160, "SEND", fill=AMBER, ink=BG, size=20, stroke=AMBER)
 key("btn_keys.svg", 100, "KEYS", size=18)
 svg("kb_bg.svg", 1280, 320, '<rect width="1280" height="320" fill="%s"/><rect y="0.5" width="1280" height="1" fill="%s"/>' % (BG, LINE))

@@ -1,0 +1,28 @@
+{
+ "name": "Daemon Tap",
+ "vendor": "sd88me",
+ "uid": "DaTp",
+ "version": 1000,
+ "so": "daemontap.so",
+ "params": "params.json",
+ "effect": true,
+ "build": {
+  "root": "..",
+  "sources": [
+   "src/daemon_tap_engine.c"
+  ],
+  "cflags": [
+   "-Isrc"
+  ],
+  "libs": [
+   "-lm",
+   "-lpthread"
+  ]
+ },
+ "defines": {
+  "HAS_DISPLAY_REV": 1,
+  "PARAM_TEXT_MAX": 128
+ },
+ "layout": "layout.conf",
+ "art": "html"
+}

@@ -13,6 +13,7 @@
 #include "daemon_agent.h"
 #include "daemon_json.h"
 #include "daemon_macro.h"
+#include "daemon_tap.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@ typedef struct {
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
     kbd_t *kbd; int kbd_devs; struct timespec press_at[4];
+    const tap_ring_t *tap; uint64_t tap_rpos, tap_seen; int tap_sync, tap_poll, has_tap;   /* the Daemon Tap effect's ring: attached, where we read, last position the probe saw, resync at the next block, blocks since an attach try, audio is flowing */
     int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
@@ -82,7 +84,7 @@ static void conf_load(dm_t *d) {
 
 
 /* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
-typedef struct { char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; } snap_t;
+typedef struct { char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; int has_remote; } snap_t;
 typedef struct { dm_t *d; const snap_t *s; mcp_t *mcp; } uictx;       /* what the tool callbacks get */
 
 static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
@@ -151,7 +153,11 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
     agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
-    actx_t ctx = { s->bpm, s->scale, s->bars, c ? "" : "The commander addin is not reachable, so project and plugin tools will fail; say so.", (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0), s->channel };
+    char note[300] = "";   /* what the add-in probe saw: tell the model what it can't use, so it says so instead of planning it */
+    if (!c) snprintf(note, sizeof note, "The commander addin is not reachable, so project and plugin tools will fail; say so. ");
+    if (!s->has_remote) { size_t l = strlen(note); snprintf(note + l, sizeof note - l, "The remote addin is not reachable, so there are no screen tools (select a track, load a plugin or instrument, import a clip); say so if asked for one."); }
+    int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0);
+    actx_t ctx = { s->bpm, s->scale, s->bars, note, s->has_remote ? ui : 0, s->channel };
     uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
     int done = 0;
@@ -241,7 +247,7 @@ static void *worker(void *arg) {
         if (mode == 2 || mode == 3) {
             snap_t sn; memset(&sn, 0, sizeof sn);
             sn.channel = ch_snap; snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
-            snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port; snprintf(sn.host_remote, sizeof sn.host_remote, "%s", d->remote_host); sn.port_remote = d->remote_port;
+            snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port; snprintf(sn.host_remote, sizeof sn.host_remote, "%s", d->remote_host); sn.port_remote = d->remote_port; sn.has_remote = d->has_remote;
             if (mode == 2) agent_plan(d, &sn, body, resp); else agent_run(d, &sn);
             pthread_mutex_lock(&d->mu);
             continue;
@@ -331,12 +337,13 @@ static void *drop_watch(void *arg) {
         if (tick % 20 == 0) {
             pthread_mutex_lock(&d->mu); char ch[48], rh[48]; int cp = d->cmdr_port, rp = d->remote_port; snprintf(ch, sizeof ch, "%s", d->cmdr_host); snprintf(rh, sizeof rh, "%s", d->remote_host); pthread_mutex_unlock(&d->mu);
             int c = port_open(ch, cp), r = port_open(rh, rp);
-            pthread_mutex_lock(&d->mu); if (c != d->has_cmdr || r != d->has_remote) d->rev++; d->has_cmdr = c; d->has_remote = r; pthread_mutex_unlock(&d->mu);
+            pthread_mutex_lock(&d->mu); int t = 0; if (d->tap) { uint64_t w = tap_pos(d->tap); t = w != d->tap_seen; d->tap_seen = w; }
+            if (c != d->has_cmdr || r != d->has_remote || t != d->has_tap) d->rev++; d->has_cmdr = c; d->has_remote = r; d->has_tap = t; pthread_mutex_unlock(&d->mu);
         }
         for (int i = 0; i < 5; i++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) return NULL; }
         { char lp[300]; snprintf(lp, sizeof lp, "%s/daemon.log", d->dir); FILE *lf = fopen(lp, "w");
           if (lf) { pthread_mutex_lock(&d->mu); long mbad = 0; int mrc = 0; if (d->io->midi_stat && d->midi) d->io->midi_stat(d->midi, &mbad, &mrc);
-              fprintf(lf, "commander %d remote %d\n", d->has_cmdr, d->has_remote); fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\nmidi_bad %ld last_rc %d\n",
+              fprintf(lf, "commander %d remote %d tap %d\n", d->has_cmdr, d->has_remote, d->has_tap); fprintf(lf, "song_pos calls %ld busy %ld playing %ld last_ppq %.3f last_bpm %.2f\nhave_part %d notes %d play %d channel %d midi_port %d note_on %ld note_off %ld\nstate %d\nstatus %s\nmidi_bad %ld last_rc %d\n",
                       d->sp_calls, d->sp_busy, d->sp_playing, d->last_ppq, d->last_bpm, d->have_part, d->part.n, d->play, d->channel, d->midi != NULL, d->n_on, d->n_off, d->state, d->status, mbad, mrc);
               pthread_mutex_unlock(&d->mu); fclose(lf); } }
         FILE *f = fopen(path, "r"); if (!f) continue;
@@ -353,6 +360,7 @@ static void *create(const char *data_dir) {
     dm_t *d = calloc(1, sizeof *d);
     pthread_mutex_init(&d->mu, NULL); pthread_cond_init(&d->cv, NULL);
     snprintf(d->dir, sizeof d->dir, "%s", data_dir ? data_dir : ".");
+    d->has_cmdr = d->has_remote = 1;   /* until the first probe says otherwise */
     d->io = daemon_io(); d->type = 2; d->keyi = 5; d->scale = 1; d->bars = 4; d->channel = 1; d->play = 1;
     conf_load(d);
     clips_dir_resolve(d);
@@ -437,9 +445,11 @@ static void set_param(void *inst, const char *k, const char *v) {
     pthread_mutex_lock(&d->mu);
     if (!strcmp(k, "talk") && on) {
         if (d->state == S_LISTENING) {
-            if (daemon_cap_peak(&d->cap) < 300) set_status(d, S_ERROR, "ERROR %s", "heard nothing: route the mic to this track");
+            if (daemon_cap_peak(&d->cap) < 300) set_status(d, S_ERROR, "ERROR %s", "heard nothing: is Daemon Tap on the mic track?");
             else { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }
-        } else if (d->state != S_THINKING) { if (d->state == S_TYPING) kbd_arm(d->kbd, 0); daemon_cap_reset(&d->cap); d->have_audio = 0; set_status(d, S_LISTENING, "LISTENING%s", ""); }
+        } else if (d->state != S_THINKING) { if (d->state == S_TYPING) kbd_arm(d->kbd, 0); if (!d->tap) d->tap = tap_attach();
+            if (!d->tap) set_status(d, S_ERROR, "ERROR %s", "no mic: insert Daemon Tap on the audio track with the mic");
+            else { daemon_cap_reset(&d->cap); d->have_audio = 0; d->tap_sync = 1; set_status(d, S_LISTENING, "LISTENING%s", ""); } }
     } else if (!strcmp(k, "typing") && on) {
         if (d->state == S_TYPING) { d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); kbd_arm(d->kbd, 0); }
         else if (d->state != S_THINKING && d->state != S_LISTENING) {
@@ -509,7 +519,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "channel")) r = snprintf(b, n, "%d", d->channel);
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
     else if (!strcmp(k, "kb")) r = snprintf(b, n, "%d", d->kb);
-    else if (!strcmp(k, "addins")) r = put_text(b, n, d->has_cmdr && d->has_remote ? "add-ins: commander OK, remote OK" : !d->has_cmdr && !d->has_remote ? "add-ins MISSING: install commander and remote (plugin and screen tools are off)" : !d->has_cmdr ? "commander MISSING: plugin and project tools are off" : "remote MISSING: track, plugin loading and clip import are off");
+    else if (!strcmp(k, "addins")) { char t[200]; snprintf(t, sizeof t, "%s%s%s", d->has_cmdr && d->has_remote ? "add-ins OK" : !d->has_cmdr && !d->has_remote ? "add-ins MISSING (plugin and screen tools off)" : !d->has_cmdr ? "commander MISSING (plugin tools off)" : "remote MISSING (screen tools off)", "  |  ", d->has_tap ? "mic tap live" : "mic tap not heard"); r = put_text(b, n, t); }
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
@@ -519,16 +529,29 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     return r;
 }
 
-static void render(void *inst, int16_t *o, int f) { (void)inst; memset(o, 0, (size_t)f * 4); }
+static void feed_audio(dm_t *d, const int16_t *in, int frames) {   /* d->mu held, state is LISTENING */
+    daemon_cap_push(&d->cap, in, frames);
+    if (d->cap.n >= DAEMON_CAP_MAX) { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }   /* 20 s: send what there is */
+}
 
-static void process(void *inst, const int16_t *in, int16_t *out, int frames) {
-    dm_t *d = inst;
-    memset(out, 0, (size_t)frames * 4);                 /* a generator, not an audio effect: the mic is not passed on */
-    if (pthread_mutex_trylock(&d->mu)) return;          /* never wait in the audio thread: skip this block of capture */
-    if (d->state == S_LISTENING) {
-        daemon_cap_push(&d->cap, in, frames);
-        if (d->cap.n >= DAEMON_CAP_MAX) { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }   /* 20 s: send what there is */
+/* Daemon is an instrument: the host gives it no audio, so the mic comes from the Daemon Tap effect (daemon_tap.h). Each block, while
+ * LISTENING, take what the tap wrote since the last block. */
+static void render(void *inst, int16_t *o, int f) {
+    dm_t *d = inst; memset(o, 0, (size_t)f * 4);
+    if (pthread_mutex_trylock(&d->mu)) return;
+    if (!d->tap && ++d->tap_poll >= 200) { d->tap_poll = 0; d->tap = tap_attach(); }
+    if (d->tap) {
+        if (d->tap_sync || d->state != S_LISTENING) { d->tap_rpos = tap_pos(d->tap); d->tap_sync = 0; }
+        else { int16_t buf[256 * 2]; int n; while (d->state == S_LISTENING && (n = tap_read(d->tap, &d->tap_rpos, buf, 256)) > 0) feed_audio(d, buf, n); }
     }
+    pthread_mutex_unlock(&d->mu);
+}
+
+static void process(void *inst, const int16_t *in, int16_t *out, int frames) {   /* an effect build (and the tests) hands the audio in directly */
+    dm_t *d = inst;
+    memset(out, 0, (size_t)frames * 4);
+    if (pthread_mutex_trylock(&d->mu)) return;
+    if (d->state == S_LISTENING) feed_audio(d, in, frames);
     pthread_mutex_unlock(&d->mu);
 }
 

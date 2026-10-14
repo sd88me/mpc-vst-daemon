@@ -5,7 +5,7 @@
  "version": 1000,
  "so": "daemon.so",
  "params": "params.json",
- "effect": true,
+ "effect": false,
  "build": {
   "root": "..",
   "sources": [

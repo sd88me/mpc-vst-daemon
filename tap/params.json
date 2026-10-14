@@ -1,0 +1,10 @@
+{
+ "params": [
+  {
+   "key": "status",
+   "name": "Tap",
+   "display": "string",
+   "poll": false
+  }
+ ]
+}
