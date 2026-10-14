@@ -24,5 +24,9 @@
   "PARAM_TEXT_MAX": 128
  },
  "layout": "layout.conf",
- "art": "html"
+ "art": "html",
+ "targets": [
+  "armv7",
+  "aarch64"
+ ]
 }

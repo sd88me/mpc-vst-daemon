@@ -36,5 +36,9 @@
   "MODULE_SUBDIR": "\"engine\""
  },
  "layout": "layout.conf",
- "art": "html"
+ "art": "html",
+ "targets": [
+  "armv7",
+  "aarch64"
+ ]
 }
