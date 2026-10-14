@@ -2,6 +2,7 @@
  * Copyright (C) 2026 sd88me */
 #define _GNU_SOURCE
 #include "daemon_agent.h"
+#include <strings.h>
 #include "daemon_json.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -200,4 +201,27 @@ int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
     else snprintf(out, cap, "%s", call->name);
     djson_free(a);
     return 0;
+}
+
+/* A step that destroys or overwrites something: 1 and a short reason in out, else 0. Needs the commander's project snapshot (the last
+ * saved state, so a track added since is not known and is not flagged). */
+int agent_risk(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
+    out[0] = 0;
+    jv *a = djson_parse(call->args, strlen(call->args));
+    if (!strcmp(call->name, "transport") && !strcmp(djson_str(a, "cmd", ""), "record")) snprintf(out, cap, "RECORDS over the track");
+    else if (c && !strcmp(call->name, "load_instrument")) {
+        int tr = (int)djson_num(a, "track", 0); const char *want = djson_str(a, "plugin", "");
+        char *pj = malloc(60000);
+        if (pj && cmdr_project(c, pj, 60000) > 0) {
+            jv *pr = djson_parse(pj, strlen(pj));
+            for (jv *t = pr ? djson_get(pr, "tracks") : NULL, *k = t ? t->kid : NULL; k; k = k->next) if ((int)djson_num(k, "index", -1) == tr) {
+                jv *pl = djson_get(k, "plugin"); const char *nm = pl ? djson_str(pl, "name", "") : "";
+                if (nm[0] && strcasecmp(nm, want)) snprintf(out, cap, "REPLACES %.40s on track %d", nm, tr);
+            }
+            djson_free(pr);
+        }
+        free(pj);
+    }
+    djson_free(a);
+    return out[0] != 0;
 }

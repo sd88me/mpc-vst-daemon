@@ -101,6 +101,12 @@ int main(void) {
     agent_describe(c, &t.calls[2], d, sizeof d); CHECK(!strcmp(d, "make a part \"bass\" on channel 3, 2 notes"), "describe part: '%s'", d);
     agent_describe(c, &(acall_t){ "transport", "{\"cmd\":\"record\"}" }, d, sizeof d); CHECK(!strcmp(d, "press record"), "describe transport: '%s'", d);
     agent_describe(c, &(acall_t){ "load_efx", "{\"track\":1,\"plugin\":\"9W9\"}" }, d, sizeof d); CHECK(!strcmp(d, "load 9W9 on track 1"), "describe load: '%s'", d);
+    { char w[80];
+      CHECK(agent_risk(c, &(acall_t){ "load_instrument", "{\"track\":2,\"plugin\":\"Profit-08\"}" }, w, sizeof w) == 1 && !strcmp(w, "REPLACES Chordsmith on track 2"), "risk replace: '%s'", w);
+      CHECK(agent_risk(c, &(acall_t){ "load_instrument", "{\"track\":2,\"plugin\":\"chordsmith\"}" }, w, sizeof w) == 0, "same plugin is not a replacement");
+      CHECK(agent_risk(c, &(acall_t){ "load_instrument", "{\"track\":1,\"plugin\":\"Profit-08\"}" }, w, sizeof w) == 0, "an empty track is not a replacement");
+      CHECK(agent_risk(c, &(acall_t){ "transport", "{\"cmd\":\"record\"}" }, w, sizeof w) == 1, "record is flagged");
+      CHECK(agent_risk(c, &(acall_t){ "transport", "{\"cmd\":\"play\"}" }, w, sizeof w) == 0, "play is not"); }
     agent_describe(c, &(acall_t){ "select_track", "{\"track\":4}" }, d, sizeof d); CHECK(!strcmp(d, "select track 4"), "describe select: '%s'", d);
 
     cmdr_close(c); close(in[1]); fclose(so);

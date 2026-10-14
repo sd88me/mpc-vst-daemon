@@ -172,6 +172,16 @@ int main(void) {
         q2 = 0; fake.nev = 0; for (int k = 0; k < 600; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
         int on4 = 0; for (int i = 0; i < fake.nev; i++) on4 += fake.ev[i].on && fake.ev[i].ch == 3;
         CHECK(on4 >= 2, "the part plays on channel 4 after RUN (%d note-ons)", on4);
+        /* a plan that overwrites something (record) needs RUN twice */
+        fake.nq = 1; fake.qi = 0;
+        snprintf(fake.queue[0], sizeof fake.queue[0], "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"Recording.\"},{\"functionCall\":{\"name\":\"transport\",\"args\":{\"cmd\":\"record\"}}}]}}]}");
+        E->set_param(g, "prompt", "record a take"); wait_not_thinking(g);
+        CHECK(strstr(get(g, "status"), "RUN twice") != NULL && strstr(get(g, "plan"), "[RECORDS") != NULL, "risky plan: '%s' / '%s'", get(g, "status"), get(g, "plan"));
+        E->set_param(g, "run", "1");
+        CHECK(!strncmp(get(g, "status"), "SURE?", 5), "first RUN only asks: '%s'", get(g, "status"));
+        E->set_param(g, "run", "1");
+        for (int i = 0; i < 400 && strncmp(get(g, "status"), "RAN", 3); i++) usleep(10000);
+        CHECK(!strcmp(get(g, "status"), "RAN 1 STEPS"), "second RUN runs it: '%s'", get(g, "status"));
         E->set_param(g, "run", "1");
         CHECK(!strncmp(get(g, "status"), "ERROR nothing to run", 20), "RUN with no plan: '%s'", get(g, "status"));
         E->destroy(g);

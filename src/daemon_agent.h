@@ -37,3 +37,4 @@ int agent_tool_is_ui(const char *name);
 int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn ui, void *user, char *result, size_t cap);
 /* One line for the screen: "set Profit-8 Cutoff to 35%" */
 int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap);
+int agent_risk(cmdr_t *c, const acall_t *call, char *out, size_t cap);   /* 1 + a reason when the step replaces or overwrites something: the plan then needs RUN twice */

@@ -51,7 +51,7 @@ typedef struct {
     int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
-    aturn_t plan; int plan_ok; char steps[500]; char cmdr_host[48]; int cmdr_port;
+    aturn_t plan; int plan_ok, plan_risky, plan_confirmed; char steps[500]; char cmdr_host[48]; int cmdr_port;
     macros_t *macros; char remote_host[48]; int remote_port;
     long sp_calls, sp_busy, sp_playing, n_on, n_off; double last_ppq, last_bpm;    /* diagnostics, written to engine/daemon.log */
 } dm_t;
@@ -182,16 +182,17 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
             } else mut++;
         }
         if (!mut) { agent_hist_model(&h, &t); agent_hist_results(&h, &t, (const char *const *)rs); agent_turn_free(&t); continue; }
-        char steps[500] = "";
+        char steps[500] = ""; int risky = 0;
         for (int i = 0, k = 0; i < t.n; i++) if (!agent_tool_is_read_only(t.calls[i].name)) {
             char line[140]; agent_describe(c, &t.calls[i], line, sizeof line);
+            char why[80]; if (agent_risk(c, &t.calls[i], why, sizeof why)) { risky = 1; size_t ll = strlen(line); snprintf(line + ll, sizeof line - ll, " [%s]", why); }
             size_t l = strlen(steps); k++; snprintf(steps + l, sizeof steps - l, "%s%d %s", k > 1 ? "   " : "", k, line);
         }
         pthread_mutex_lock(&d->mu);
-        agent_turn_free(&d->plan); memcpy(&d->plan, &t, sizeof t); d->plan_ok = 1;      /* the plan owns the turn now */
+        agent_turn_free(&d->plan); memcpy(&d->plan, &t, sizeof t); d->plan_ok = 1; d->plan_risky = risky; d->plan_confirmed = 0;      /* the plan owns the turn now */
         snprintf(d->steps, sizeof d->steps, "%s", steps); snprintf(d->reply, sizeof d->reply, "%.500s", t.text);
         snprintf(d->transcript, sizeof d->transcript, "%s", s->typed[0] ? s->typed : "(voice)");
-        char n[16]; snprintf(n, sizeof n, "%d", mut); set_status(d, S_PLAN, "PLAN %s STEPS: press RUN", n);
+        char n[16]; snprintf(n, sizeof n, "%d", mut); set_status(d, S_PLAN, risky ? "PLAN %s STEPS (REPLACES OR OVERWRITES): press RUN twice" : "PLAN %s STEPS: press RUN", n);
         pthread_mutex_unlock(&d->mu);
         done = 1;
     }
@@ -476,7 +477,8 @@ static void set_param(void *inst, const char *k, const char *v) {
         if (d->kb) snprintf(d->transcript, sizeof d->transcript, "> %s_", d->kbuf);
         d->rev++;
     } else if (!strcmp(k, "run") && on) {
-        if (d->state == S_PLAN && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
+        if (d->state == S_PLAN && d->plan_ok && d->plan_risky && !d->plan_confirmed) { d->plan_confirmed = 1; set_status(d, S_PLAN, "SURE? this changes existing work: press RUN again, or ask for something else%s", ""); }
+        else if (d->state == S_PLAN && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
         else set_status(d, d->state == S_THINKING ? S_THINKING : S_ERROR, "%s", d->state == S_THINKING ? "THINKING" : "ERROR nothing to run: ask for something with AGENT on");
     } else if (!strcmp(k, "agent")) {
         d->agent = on || !strcmp(v, "On");
