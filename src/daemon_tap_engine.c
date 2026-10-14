@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Copyright (C) 2026 sd88me
  *
- * Daemon Ear: an effect for the audio track that carries the mic. The audio passes through unchanged; a copy goes into the ring Daemon
+ * Daemon Listen: an effect for the audio track that carries the mic. The audio passes through unchanged; a copy goes into the ring Daemon
  * (the instrument) reads for TALK (daemon_tap.h). One tap per device: the last inserted writes. */
 #include "engine.h"
 #include "daemon_tap.h"

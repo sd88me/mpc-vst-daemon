@@ -1,6 +1,6 @@
 # Daemon (working name)
 
-Voice and keyboard prompts to MIDI parts for Akai MPC OS standalone devices, as a native VST2 **instrument** that plays through its own MIDI port, with a small **Daemon Ear** effect
+Voice and keyboard prompts to MIDI parts for Akai MPC OS standalone devices, as a native VST2 **instrument** that plays through its own MIDI port, with a small **Daemon Listen** effect
 for the voice input: put the tap on the audio track that carries the mic and TALK in Daemon listens through it (the host gives an instrument no audio). Modelled on a Max for Live generator device:
 prompt + type + key/scale + length in, notes out. Skin theme: amber phosphor, cyan accent.
 
@@ -41,7 +41,7 @@ not linked. If you distribute a modified version, you must make its source avail
 "Daemon" is a working name, and the licence does not grant any right to the name or branding of the project.
 
 ## Using it on a device (verified on a Force, MPC OS 3.9.1, 2026-10-12)
-- Add Daemon as an instrument on a track and open it once. For voice, insert **Daemon Ear** on the audio track with the mic (its screen shows the level); TYPE and KEYS (the drawn keypad) need no tap.
+- Add Daemon as an instrument on a track and open it once. For voice, insert **Daemon Listen** on the audio track with the mic (its screen shows the level); TYPE and KEYS (the drawn keypad) need no tap.
 - Its notes leave through a MIDI port of its own, "Daemon MIDI Out". In Preferences > MIDI switch on Global, Control and Track
   for it, and give the instrument track an input of All Ports. Set Daemon's **Channel** to the channel the instrument listens
   on (default 1; a JV-880 port heard nothing on 2). The ALSA client stays open for the whole MPC session, so the switches

@@ -1,9 +1,9 @@
 {
- "name": "Daemon Ear",
+ "name": "Daemon Listen",
  "vendor": "sd88me",
- "uid": "DaEr",
+ "uid": "DaLs",
  "version": 1000,
- "so": "daemonear.so",
+ "so": "daemonlisten.so",
  "params": "params.json",
  "effect": true,
  "build": {

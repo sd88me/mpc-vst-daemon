@@ -47,7 +47,7 @@ typedef struct {
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
     kbd_t *kbd; int kbd_devs; struct timespec press_at[4];
-    const tap_ring_t *tap; uint64_t tap_rpos, tap_seen; int tap_sync, tap_poll, has_tap;   /* the Daemon Ear effect's ring: attached, where we read, last position the probe saw, resync at the next block, blocks since an attach try, audio is flowing */
+    const tap_ring_t *tap; uint64_t tap_rpos, tap_seen; int tap_sync, tap_poll, has_tap;   /* the Daemon Listen effect's ring: attached, where we read, last position the probe saw, resync at the next block, blocks since an attach try, audio is flowing */
     int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
     int agent, mode;                           /* agent: tools on; mode: what the worker was asked for (1 generate, 2 plan, 3 run the plan) */
@@ -445,10 +445,10 @@ static void set_param(void *inst, const char *k, const char *v) {
     pthread_mutex_lock(&d->mu);
     if (!strcmp(k, "talk") && on) {
         if (d->state == S_LISTENING) {
-            if (daemon_cap_peak(&d->cap) < 300) set_status(d, S_ERROR, "ERROR %s", "heard nothing: is Daemon Ear on the mic track?");
+            if (daemon_cap_peak(&d->cap) < 300) set_status(d, S_ERROR, "ERROR %s", "heard nothing: is Daemon Listen on the mic track?");
             else { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }
         } else if (d->state != S_THINKING) { if (d->state == S_TYPING) kbd_arm(d->kbd, 0); if (!d->tap) d->tap = tap_attach();
-            if (!d->tap) set_status(d, S_ERROR, "ERROR %s", "no mic: insert Daemon Ear on the audio track with the mic");
+            if (!d->tap) set_status(d, S_ERROR, "ERROR %s", "no mic: insert Daemon Listen on the audio track with the mic");
             else { daemon_cap_reset(&d->cap); d->have_audio = 0; d->tap_sync = 1; set_status(d, S_LISTENING, "LISTENING%s", ""); } }
     } else if (!strcmp(k, "typing") && on) {
         if (d->state == S_TYPING) { d->transcript[0] = 0; set_status(d, S_READY, "READY%s", ""); kbd_arm(d->kbd, 0); }
@@ -534,7 +534,7 @@ static void feed_audio(dm_t *d, const int16_t *in, int frames) {   /* d->mu held
     if (d->cap.n >= DAEMON_CAP_MAX) { d->have_audio = 1; d->typed[0] = 0; request(d, 1); }   /* 20 s: send what there is */
 }
 
-/* Daemon is an instrument: the host gives it no audio, so the mic comes from the Daemon Ear effect (daemon_tap.h). Each block, while
+/* Daemon is an instrument: the host gives it no audio, so the mic comes from the Daemon Listen effect (daemon_tap.h). Each block, while
  * LISTENING, take what the tap wrote since the last block. */
 static void render(void *inst, int16_t *o, int f) {
     dm_t *d = inst; memset(o, 0, (size_t)f * 4);
