@@ -64,3 +64,9 @@ Typed prompt (remote virtual keyboard) -> agent plan (make part + clip into trac
 - Verified on the Force (2026-10-14): voice end to end through Daemon Listen, the drawn keyboard (full-width 112x68 keys), and a Bluetooth keyboard via TYPE.
 - Plans that replace an instrument (per the commander's last-saved project) or record need RUN pressed twice (`agent_risk`). Unsaved new tracks are not flagged.
 - Release dry run (nothing published): `vst.json` and `listen/vst.json` now list `targets` armv7 + aarch64; both build. `tools/release.py --repo sd88me/mpc-vst-daemon --license GPL-3.0-or-later [--user-data engine]` makes Daemon and Daemon Listen zips for each CPU; `catalog_check.py --catalog` OK (one expected warning: network/dlopen). Not done: Gen2 device test, bench, GitHub release, trademark check of the name "Daemon".
+
+## 2026-10-15: load_preset (built, deployed, NOT yet run end to end)
+- Macro `load_preset(track, preset, folder?)`: Mixer → EFFECTS tab → double tap track title → double tap PRESET (940,598) → optional folder → preset by vision → close X (1152,86). Mixer only, no Matrix button (Force-specific). Agent tool uses `has_ui` bit 16 when the macro exists. Optional macro params and `if_param` steps are tested (9 suites pass). Recorded by hand on Solina (AIR); Dexed/Chordsmith/Clementine-XT have no presets.
+- Deployed: `daemon.so` md5 d42147487adaeaa6d9225cca96c5c616 and `engine/macros.json` (prior `macros.json.bak2`). The new `.so` loads on project reload.
+- To test next: reload the project, open Daemon, AGENT on, prompt "load the Rich Strings preset from the Modern folder on track 4" (track 4 = Solina, unsaved, a reload removes it, so re-add Solina first), press RUN, check `engine/agent.log`/`daemon.log`.
+- Still open: A/B audition and prompt recipes, GitHub draft release (confirm the name "Daemon", ask before publishing; no Gen2 test, bench or trademark check), keyboard responsiveness (120 ms same-key debounce) if reported.
