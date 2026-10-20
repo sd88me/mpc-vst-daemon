@@ -91,7 +91,7 @@ int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t c
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins and pick effects from installed_effects only, never a name that is not in that list. Choose the obvious plugin: for a reverb one whose name says reverb (AIR Reverb is the default), for a delay or echo one whose name says delay or echo (AIR Multitap Delay, Delay Analog), for chorus, compression, tape, filter likewise; prefer the device's own factory effects (factory:true) over third-party ones unless the musician names one. Never use a plugin whose name does not say what it does as a stand-in (a Tap FX is not a delay): if nothing installed fits, say so in your reply instead of guessing. Pass the group shown for that plugin in installed_effects as load_efx's group, load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
+        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins and pick effects from installed_effects only, never a name that is not in that list. Choose the obvious plugin: for a reverb one whose name says reverb (AIR Reverb is the default), for a delay or echo one whose name says delay or echo (AIR Multitap Delay, Delay Analog), for chorus, compression, tape, filter likewise; prefer the device's own effects (any group but VST) over third-party ones (VST) unless the musician names one. Never use a plugin whose name does not say what it does as a stand-in (a Tap FX is not a delay): if nothing installed fits, say so in your reply instead of guessing. Pass the group the plugin is listed under in installed_effects as load_efx's group, load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
         ctx->channel > 0 ? ctx->channel : 1, ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
@@ -234,18 +234,57 @@ static int installed_plugins(char *out, size_t cap) {
         scan_factory(synths, -1, E, &ne, MAXE);
     }
     { const char *fd = getenv("DAEMON_FACTORY_DIR"); scan_factory(fd ? fd : "/usr/share/Akai/Content/Synths", -1, E, &ne, MAXE); }   /* the whole built-in set, with presets inside each folder */
-    size_t o = 0;
+    /* compact for the model: names grouped by the picker's type group (VST = third-party, every other group = the device's own) */
+    size_t o = 0; const char *seen[MAXE]; int ns = 0;
     for (int kind = 0; kind < 2; kind++) {                 /* 0 effects, 1 instruments */
-        o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":[", kind ? "," : "", kind ? "instruments" : "effects"); int cn = 0;
+        o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":{", kind ? "," : "", kind ? "instruments" : "effects"); int gn = 0; ns = 0;
         for (int i = 0; i < ne; i++) if (E[i].inst == kind) {
-            char *nj = jstr_alloc(E[i].name), *cj = jstr_alloc(E[i].cat), *gj = jstr_alloc(E[i].group); if (!nj || !cj || !gj) { free(nj); free(cj); free(gj); continue; }
-            size_t need = strlen(nj) + strlen(cj) + strlen(gj) + 60; if (o + need + 8 >= cap) { free(nj); free(cj); free(gj); break; }
-            o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":%s,\"category\":%s%s%s%s}", cn++ ? "," : "", nj, cj, E[i].group[0] ? ",\"group\":" : "", E[i].group[0] ? gj : "", E[i].factory ? ",\"factory\":true" : ""); free(nj); free(cj); free(gj);
+            const char *g = kind ? (E[i].factory ? "factory" : "VST") : (E[i].group[0] ? E[i].group : "Other"); int dup = 0;
+            for (int q = 0; q < ns; q++) if (!strcmp(seen[q], g)) dup = 1;
+            if (dup) continue; seen[ns++] = g;
+            o += (size_t)snprintf(out + o, cap - o, "%s\"%s\":[", gn++ ? "," : "", g); int cn = 0;
+            for (int j = i; j < ne; j++) if (E[j].inst == kind) {
+                const char *gj = kind ? (E[j].factory ? "factory" : "VST") : (E[j].group[0] ? E[j].group : "Other"); if (strcmp(gj, g)) continue;
+                char *nj = jstr_alloc(E[j].name); if (!nj) continue;
+                if (o + strlen(nj) + 16 >= cap) { free(nj); break; }
+                o += (size_t)snprintf(out + o, cap - o, "%s%s", cn++ ? "," : "", nj); free(nj);
+            }
+            o += (size_t)snprintf(out + o, cap - o, "]");
         }
-        o += (size_t)snprintf(out + o, cap - o, "]");
+        o += (size_t)snprintf(out + o, cap - o, "}");
     }
     free(E);
     return (int)o;
+}
+
+/* The commander's snapshot cut down to what planning needs: no bus/return/output tracks, colours, file paths or plugin state.
+ * Roughly 8 KB becomes under 1 KB, and the result is re-sent with every planning round. Leaves buf as is if it can't parse it. */
+static void compact_project(char *buf, size_t cap) {
+    jv *p = djson_parse(buf, strlen(buf)); if (!p || djson_get(p, "tracks") == NULL) { djson_free(p); return; }
+    char *o = malloc(cap); if (!o) { djson_free(p); return; }
+    size_t n = 0; char t1[200], t2[200];
+    #define JS(dst, str) do { jv v_ = { 's', 0, (char *)(str), NULL, NULL, NULL }; djson_write(&v_, dst, sizeof dst); } while (0)
+    JS(t1, djson_str(p, "name", "")); JS(t2, djson_str(p, "key", ""));
+    n += (size_t)snprintf(o + n, cap - n, "{\"project\":%s,\"tempo\":%g,\"key\":%s,\"current_track\":%d", t1, djson_num(p, "tempo", 0), t2, (int)djson_num(p, "current_track", -1));
+    jv *sq = djson_get(p, "sequence");
+    if (sq && sq->t == 'o') { JS(t1, djson_str(sq, "name", "")); n += (size_t)snprintf(o + n, cap - n, ",\"sequence\":{\"name\":%s,\"bars\":%g}", t1, djson_num(sq, "bars", 0)); }
+    n += (size_t)snprintf(o + n, cap - n, ",\"tracks\":[");
+    int k = 0;
+    for (jv *t = djson_get(p, "tracks")->kid; t && n + 400 < cap; t = t->next) {
+        const char *ty = djson_str(t, "type", "");
+        if (!strcmp(ty, "submix") || !strcmp(ty, "return") || !strcmp(ty, "output")) continue;
+        JS(t1, djson_str(t, "name", ""));
+        n += (size_t)snprintf(o + n, cap - n, "%s{\"index\":%d,\"name\":%s,\"type\":\"%s\"", k++ ? "," : "", (int)djson_num(t, "index", 0), t1, ty);
+        jv *pl = djson_get(t, "plugin");
+        if (pl && pl->t == 'o') { JS(t1, djson_str(pl, "name", "")); n += (size_t)snprintf(o + n, cap - n, ",\"plugin\":%s", t1); if (djson_str(pl, "preset", "")[0]) { JS(t2, djson_str(pl, "preset", "")); n += (size_t)snprintf(o + n, cap - n, ",\"preset\":%s", t2); } }
+        jv *b;
+        if ((b = djson_get(t, "mute")) && b->t == 'b' && b->num) n += (size_t)snprintf(o + n, cap - n, ",\"mute\":true");
+        if ((b = djson_get(t, "solo")) && b->t == 'b' && b->num) n += (size_t)snprintf(o + n, cap - n, ",\"solo\":true");
+        n += (size_t)snprintf(o + n, cap - n, "}");
+    }
+    #undef JS
+    snprintf(o + n, cap - n, "]}");
+    snprintf(buf, cap, "%s", o); free(o); djson_free(p);
 }
 static int jerr(char *r, size_t cap, const char *msg) { jv v = { 's', 0, (char *)msg, NULL, NULL, NULL }; char e[300]; djson_write(&v, e, sizeof e); snprintf(r, cap, "{\"error\":%s}", e); return -1; }
 
@@ -253,7 +292,7 @@ int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn u
     jv *a = djson_parse(call->args, strlen(call->args));
     int rc = 0;
     if (!a) return jerr(result, cap, "bad arguments");
-    if (!strcmp(call->name, "get_project")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_project(c, result, cap) < 0) rc = -1; }
+    if (!strcmp(call->name, "get_project")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_project(c, result, cap) < 0) rc = -1; else compact_project(result, cap); }
     else if (!strcmp(call->name, "list_plugins")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugins_summary(c, result, cap) < 0) rc = jerr(result, cap, "too many plugins to list");
         else { char *inst = malloc(60000); size_t l = strlen(result);
             if (inst && installed_plugins(inst, 60000) > 0 && l + strlen(inst) + 30 < cap) { char *loaded = strdup(result); if (loaded) { snprintf(result, cap, "{\"loaded\":%s,%s}", loaded, inst); free(loaded); } }

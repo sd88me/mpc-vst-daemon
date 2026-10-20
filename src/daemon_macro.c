@@ -233,7 +233,7 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
                     char sargs[160]; snprintf(sargs, sizeof sargs, "{\"x\":%d,\"y\":%d,\"direction\":\"down\",\"amount\":%d,\"screenshot\":\"none\"}", (int)lround(sx), (int)lround(sy), (int)djson_num(s, "amount", 400));
                     if (mcp_call(r->mcp, "scroll", sargs, text, sizeof text, NULL) < 0) return fail(r, "%.150s", text, i, macro);
                 }
-                if (mcp_call(r->mcp, "screenshot", "{\"zoom\":1}", text, sizeof text, &png) < 0 || !png) { free(png); return fail(r, "%s", "could not read the screen", i, macro); }
+                if (mcp_call(r->mcp, "screenshot", "{\"zoom\":0.5}", text, sizeof text, &png)   /* half size: a quarter of the image tokens, list text stays legible; the model answers in 0-1000 */ < 0 || !png) { free(png); return fail(r, "%s", "could not read the screen", i, macro); }
                 rc = r->vision(r->user, target, hint, png, r->sw, r->sh, &x, &y, why, sizeof why); free(png); png = NULL;
                 if (rc >= 0) break;
             }
