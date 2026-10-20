@@ -262,7 +262,7 @@ static void agent_run(dm_t *d, const snap_t *s) {
     }
     free(res); cmdr_close(c); mcp_close(uc.mcp);
     pthread_mutex_lock(&d->mu);
-    d->plan_ok = 0; agent_turn_free(&d->plan);
+    d->plan_ok = 0; agent_turn_free(&d->plan); d->steps[0] = 0;   /* a plan runs once: clear it so it does not look runnable */
     char m[160];
     if (ok == total) { snprintf(m, sizeof m, "%d", total); set_status(d, S_DONE, structural ? "RAN %s STEPS: now SAVE the project so Daemon sees it" : "RAN %s STEPS", m); }
     else { snprintf(m, sizeof m, "RAN %d of %d: %s", ok, total, first_err); set_status(d, S_ERROR, "%s", m); }
@@ -529,9 +529,11 @@ static void set_param(void *inst, const char *k, const char *v) {
         if (d->kb) snprintf(d->transcript, sizeof d->transcript, "> %s_", d->kbuf);
         d->rev++;
     } else if (!strcmp(k, "run") && on) {
-        if (d->state == S_PLAN && d->plan_ok && d->plan_risky && !d->plan_confirmed) { d->plan_confirmed = 1; set_status(d, S_PLAN, "SURE? this changes existing work: press RUN again, or ask for something else%s", ""); }
-        else if (d->state == S_PLAN && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
-        else set_status(d, d->state == S_THINKING ? S_THINKING : S_ERROR, "%s", d->state == S_THINKING ? "THINKING" : "ERROR nothing to run: ask for something with AGENT on");
+        int idle = d->state != S_THINKING && d->state != S_LISTENING;   /* a plan stays runnable after other buttons or an error, until a new request replaces it */
+        if (idle && d->plan_ok && d->plan_risky && !d->plan_confirmed) { d->plan_confirmed = 1; set_status(d, S_PLAN, "SURE? this changes existing work: press RUN again, or ask for something else%s", ""); }
+        else if (idle && d->plan_ok) { d->pending = 1; d->mode = 3; set_status(d, S_THINKING, "RUNNING%s", ""); pthread_cond_signal(&d->cv); }
+        else if (!idle) set_status(d, d->state, "%s", d->state == S_THINKING ? "BUSY: wait for the answer, then press RUN" : "LISTENING: tap TALK to finish first");
+        else set_status(d, S_ERROR, "%s", d->steps[0] ? "ERROR that plan has already run or is from before: ask again" : "ERROR nothing to run: switch CONTROL MPC on and ask for something");
     } else if (!strcmp(k, "agent")) {
         d->agent = on || !strcmp(v, "On");
         if (!d->agent && d->state == S_PLAN) { d->plan_ok = 0; agent_turn_free(&d->plan); d->steps[0] = 0; set_status(d, S_READY, "READY%s", ""); }

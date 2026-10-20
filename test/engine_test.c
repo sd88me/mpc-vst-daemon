@@ -166,9 +166,12 @@ int main(void) {
         CHECK(!strcmp(get(g, "face"), "Done"), "plan face '%s'", get(g, "face"));
         double q2 = 0; fake.nev = 0; for (int k = 0; k < 300; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
         CHECK(fake.nev == 0, "nothing plays before RUN (%d events)", fake.nev);
+        E->set_param(g, "typing", "1"); E->set_param(g, "typing", "1");   /* another button in between: the plan must still run */
+        CHECK(strncmp(get(g, "status"), "PLAN", 4), "status moved on from the plan: '%s'", get(g, "status"));
         E->set_param(g, "run", "1");
         for (int i = 0; i < 400 && strncmp(get(g, "status"), "RAN", 3); i++) usleep(10000);
         CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS"), "run status '%s'", get(g, "status"));
+        CHECK(!strcmp(get(g, "plan"), "-"), "a plan that ran is cleared: '%s'", get(g, "plan"));
         q2 = 0; fake.nev = 0; for (int k = 0; k < 600; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
         int on4 = 0; for (int i = 0; i < fake.nev; i++) on4 += fake.ev[i].on && fake.ev[i].ch == 3;
         CHECK(on4 >= 2, "the part plays on channel 4 after RUN (%d note-ons)", on4);
