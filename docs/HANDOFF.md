@@ -105,3 +105,9 @@ Typed prompt (remote virtual keyboard) -> agent plan (make part + clip into trac
 - **Fixes found on the device:** insert slots sit on a **159 px** column pitch, not 160 (`find_empty` origin was drifting, track 5 failed); vision lookup retries 429/500/503; a **double unlock** of the engine mutex in the model refresh hung MPC at "Loading clips to row 1" (killed MPC with `kill -TERM`; `systemctl` was unreachable with "Transport endpoint is not connected"); the virtual keyboard device only appears after the first `type_text`, so the first characters are lost unless a space is typed first and "TYPING: Enter sends" has appeared.
 - **Verified end to end:** "add a reverb and a delay to track 5" -> AIR Reverb + AIR Delay in track 5's inserts (model gemini-3-flash-preview). The default model in `daemon.conf` is now gemini-3-flash-preview (3.5-flash hit its free quota; 3.1-flash-lite was timing out).
 - Not done: verify the other picker groups; the project still needs saving by hand after structural changes (the commander picks the newest-saved project); `add_track` not yet run through the agent; Gen2 build untested.
+
+## 2026-10-20 (night 2): efficiency review, release README
+- Token diet: get_project result is compacted in daemon_agent.c (real tracks, name/type/plugin/preset/mute/solo only): 8722 -> 470 bytes on daemon-test; installed plugins are `{"group":[names]}` lists; vision screenshots at zoom 0.5 (verified on the device: AIR Chorus found and loaded, so the Modulation group guess is right).
+- load_efx now scrolls the picker to the top before the group step (the picker reopens where the last pick was; AIR Reverb was above the view). Deployed (macros.json ff4eacf4...), NOT yet re-run: gemini-3-flash-preview hit its free quota (429) too. Next test: "add a reverb to track 5" (track 5 holds AIR Chorus, unsaved).
+- `engine/prompt.txt` works for driving tests without the screen.
+- README rewritten as a first-release README.
