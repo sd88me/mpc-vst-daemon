@@ -20,6 +20,7 @@ Verified on a Force running MPC OS 3.9.1 (the other standalone devices should wo
 - Tools: set plugin parameters, press transport buttons, make a part, and by driving the MPC screen: select a track, add a Plugin track, load an effect, load an instrument,
   choose a preset (including folders), and import the part into the first free clip slot of a track.
 - Style requests use effects: "dubby chords" can load a delay and a reverb from the effects you have installed, then set their mix and feedback.
+- Effects are chosen from what is really installed: the device's own effects (read from its plugin folders, with the picker group each sits in) and your third-party VSTs. The agent prefers the obvious name (AIR Reverb, AIR Delay, ...) and tells you when nothing fits instead of guessing.
 - After steps that change the project's structure, Daemon reminds you to save the project (the agent reads the saved file).
 
 Things to say: "make dubby chords on track 4 with a delay and a reverb", "load the Rich Strings preset from the Modern folder on track 4", "load Profit-8 on track 3 and make it a plucky lead",
@@ -48,9 +49,16 @@ Things to say: "make dubby chords on track 4 with a delay and a reverb", "load t
 4. In MPC's Preferences > MIDI switch on **Global, Control and Track** for the port "Daemon MIDI Out", and give the instrument track you want to hear an input of All Ports.
    Set Daemon's **Channel** to the channel that instrument listens on (1-based, default 1).
 
+## The SETTINGS tab
+Daemon has two screen tabs at the bottom: **DAEMON** and **SETTINGS**. SETTINGS shows
+- the **Gemini API key** status (set or not, only its last four characters; the key itself lives in `engine/daemon.conf`),
+- the **model** in use, with **[< PREV]** and **[NEXT >]** to choose another and **[REFRESH LIST]** to ask Google which models your key can use (text models only; image, speech and transcription models are left out). The choice is saved to `daemon.conf` and applies to the next request, no reload needed,
+- the state of the two add-ins and of the **Daemon Listen** effect. While Daemon Listen is not detected, **[TALK]** is greyed out (it still answers with what is missing).
+If a model answers "quota exceeded" or "high demand", pick another one here.
+
 ## Using it
 1. Add Daemon as an instrument on a track and open its screen (Main mode, select its track, then the arrow button next to the plugin name).
-2. Tap **TYPE** and type a prompt, **Enter** sends. (Wait for the status line to say TYPING before typing.) Or tap **KEYS** and use the drawn keypad, or **TALK** to speak.
+2. Tap **TYPE** and type a prompt, **Enter** sends. (Wait for the status line to say "TYPING: Enter sends" before typing; with the remote add-in's virtual keyboard the first time after a restart, send a single space first so Daemon has picked the keyboard up.) Or tap **KEYS** and use the drawn keypad, or **TALK** to speak.
 3. Without AGENT, Daemon makes a part and plays it. With **AGENT** on it answers with a plan, or with a short reply if there is nothing to do.
 4. Read the PLAN line, then press **RUN**. Steps that touch the screen take a few seconds each, and the screen shows the Mixer afterwards: reopen Daemon to read the result.
 5. Press **SAVE** to write the part as a `.mid` file.
