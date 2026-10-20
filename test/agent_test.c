@@ -82,6 +82,12 @@ int main(void) {
     char err[100]; cmdr_t *c = cmdr_open("127.0.0.1", atoi(line), err, sizeof err); CHECK(c != NULL, "open: %s", err); if (!c) return 1;
     static char r[1 << 16];
     CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "Profit-8"), "list_plugins: %s", r);
+    { FILE *sf = fopen("/tmp/daemon_mpc_settings_test.xml", "w");
+      fputs("<PROPERTIES><KNOWNPLUGINS>\n <PLUGIN name=\"AW Reverb - Galactic3\" descriptiveName=\"x\"\n format=\"VST\" category=\"Reverb\" isInstrument=\"0\" numInputs=\"2\"/>\n"
+            " <PLUGIN name=\"Drum &amp; Bass\" format=\"VST\" category=\"Instrument\" isInstrument=\"1\"/>\n <PLUGIN name=\"Stock FX\" format=\"AU\" category=\"Effect\" isInstrument=\"0\"/>\n</KNOWNPLUGINS></PROPERTIES>", sf); fclose(sf);
+      setenv("DAEMON_MPC_SETTINGS", "/tmp/daemon_mpc_settings_test.xml", 1);
+      CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "\"loaded\":[") && strstr(r, "Profit-8") && strstr(r, "\"installed_effects\":[{\"name\":\"AW Reverb - Galactic3\",\"category\":\"Reverb\"}]") && strstr(r, "\"installed_instruments\":[{\"name\":\"Drum & Bass\"") && !strstr(r, "Stock FX"), "installed plugins are listed: %s", r);
+      unsetenv("DAEMON_MPC_SETTINGS"); remove("/tmp/daemon_mpc_settings_test.xml"); }
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":5}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "Cutoff"), "get_plugin_params: %.80s", r);
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":77}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "error"), "unknown plugin: %s", r);
     CHECK(agent_exec(c, &(acall_t){ "get_project", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "F Minor"), "get_project: %.80s", r);

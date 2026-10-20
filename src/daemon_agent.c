@@ -2,6 +2,7 @@
  * Copyright (C) 2026 sd88me */
 #define _GNU_SOURCE
 #include "daemon_agent.h"
+#include <glob.h>
 #include <strings.h>
 #include "daemon_json.h"
 #include <stdio.h>
@@ -60,7 +61,7 @@ int agent_hist_results(ahist_t *h, const aturn_t *t, const char *const *results)
 static const char *TOOLS =
  "[{\"functionDeclarations\":["
  "{\"name\":\"get_project\",\"description\":\"The MPC project as last saved: tempo, key, the current sequence, and every track with its name, kind and plugin. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}},"
- "{\"name\":\"list_plugins\",\"description\":\"The plugin instances currently loaded in MPC: id, name, vendor and parameter count. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}},"
+ "{\"name\":\"list_plugins\",\"description\":\"The plugin instances currently loaded in MPC (id, name, vendor, parameter count), and when known the effects and instruments installed on the device (installed_effects, installed_instruments: the names load_efx and load_instrument can pick). Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}},"
  "{\"name\":\"get_plugin_params\",\"description\":\"Parameters of one plugin instance with their index, name, 0-1 value and the text MPC shows. A synth can have hundreds: pass match, words separated by | (for example attack|decay|cutoff|filter|env), to get only those whose name contains one. Read-only.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"},\"match\":{\"type\":\"STRING\"}},\"required\":[\"id\"]}},"
  "{\"name\":\"set_param\",\"description\":\"Set one plugin parameter to a value between 0 and 1. The result reports the text MPC then shows, so a value can be corrected.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"id\":{\"type\":\"INTEGER\"},\"index\":{\"type\":\"INTEGER\"},\"value\":{\"type\":\"NUMBER\"}},\"required\":[\"id\",\"index\",\"value\"]}},"
  "{\"name\":\"transport\",\"description\":\"Press a transport button on the MPC.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"cmd\":{\"type\":\"STRING\",\"enum\":[\"play\",\"stop\",\"continue\",\"record\"]}},\"required\":[\"cmd\"]}},"
@@ -88,7 +89,7 @@ int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t c
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins to find the best matching effects installed (a delay and a reverb for dub), load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
+        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins and pick effects from installed_effects only, never a name that is not in that list (a delay or echo and a reverb for dub; if nothing is a delay, say so and use what is closest; names and categories hint at what each does), load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
         ctx->channel > 0 ? ctx->channel : 1, ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
@@ -141,6 +142,53 @@ int agent_parse_turn(const char *response, aturn_t *t) {
 }
 
 /* ---- running tools ---- */
+
+/* The plugins MPC has installed (KNOWNPLUGINS in its settings file), so the model picks names that exist. Writes
+ * `"installed_effects":[...],"installed_instruments":[...]` (JSON members, no braces) and returns its length, or 0 when there
+ * is no settings file. DAEMON_MPC_SETTINGS overrides the path (tests). */
+static void xml_unesc(char *s) {
+    static const struct { const char *e; char c; } E[] = { { "&amp;", '&' }, { "&quot;", '"' }, { "&lt;", '<' }, { "&gt;", '>' }, { "&apos;", '\'' } };
+    char *w = s;
+    for (const char *r = s; *r;) {
+        int done = 0;
+        if (*r == '&') for (size_t k = 0; k < sizeof E / sizeof *E; k++) { size_t n = strlen(E[k].e); if (!strncmp(r, E[k].e, n)) { *w++ = E[k].c; r += n; done = 1; break; } }
+        if (!done) *w++ = *r++;
+    }
+    *w = 0;
+}
+static int tag_attr(const char *tag, const char *end, const char *key, char *out, size_t cap) {   /* key="value" inside tag..end */
+    char pat[40]; snprintf(pat, sizeof pat, " %s=\"", key);
+    const char *p = strstr(tag, pat); if (!p || p >= end) return -1;
+    p += strlen(pat); const char *q = memchr(p, '"', (size_t)(end - p)); if (!q || (size_t)(q - p) >= cap) return -1;
+    memcpy(out, p, (size_t)(q - p)); out[q - p] = 0; xml_unesc(out); return 0;
+}
+static int installed_plugins(char *out, size_t cap) {
+    const char *path = getenv("DAEMON_MPC_SETTINGS"); glob_t g; char found[512] = "";
+    if (path) snprintf(found, sizeof found, "%s", path);
+    else if (glob("/media/*/Settings/MPC/MPC.settings", 0, NULL, &g) == 0) { if (g.gl_pathc) snprintf(found, sizeof found, "%s", g.gl_pathv[0]); globfree(&g); }
+    if (!found[0]) return 0;
+    FILE *f = fopen(found, "re"); if (!f) return 0;
+    size_t cp = 1 << 20, n = 0; char *buf = malloc(cp); if (!buf) { fclose(f); return 0; }
+    n = fread(buf, 1, cp - 1, f); fclose(f); buf[n] = 0;
+    size_t o = 0; int kind, cnt[2] = { 0, 0 };
+    for (kind = 0; kind < 2; kind++) {           /* 0 effects, 1 instruments */
+        o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":[", kind ? "," : "", kind ? "instruments" : "effects");
+        const char *k = strstr(buf, "<KNOWNPLUGINS>"), *stop = k ? strstr(k, "</KNOWNPLUGINS>") : NULL;
+        for (const char *t = k; k && (t = strstr(t, "<PLUGIN ")) && (!stop || t < stop); t += 8) {
+            const char *end = strstr(t, "/>"); if (!end) break;
+            char name[120], cat[60], isi[4], fmt[16];
+            if (tag_attr(t, end, "name", name, sizeof name) || tag_attr(t, end, "isInstrument", isi, sizeof isi)) continue;
+            if (tag_attr(t, end, "format", fmt, sizeof fmt) || strcmp(fmt, "VST") || (isi[0] == '1') != (kind == 1)) continue;
+            if (tag_attr(t, end, "category", cat, sizeof cat)) cat[0] = 0;
+            char *nj = jstr_alloc(name), *cj = jstr_alloc(cat); if (!nj || !cj) { free(nj); free(cj); continue; }
+            size_t need = strlen(nj) + strlen(cj) + 30; if (o + need + 8 >= cap) { free(nj); free(cj); break; }
+            o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":%s,\"category\":%s}", cnt[kind]++ ? "," : "", nj, cj); free(nj); free(cj);
+        }
+        o += (size_t)snprintf(out + o, cap - o, "]");
+    }
+    free(buf);
+    return (int)o;
+}
 static int jerr(char *r, size_t cap, const char *msg) { jv v = { 's', 0, (char *)msg, NULL, NULL, NULL }; char e[300]; djson_write(&v, e, sizeof e); snprintf(r, cap, "{\"error\":%s}", e); return -1; }
 
 int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn ui, void *user, char *result, size_t cap) {
@@ -148,7 +196,10 @@ int agent_exec(cmdr_t *c, const acall_t *call, agent_play_fn play, agent_ui_fn u
     int rc = 0;
     if (!a) return jerr(result, cap, "bad arguments");
     if (!strcmp(call->name, "get_project")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_project(c, result, cap) < 0) rc = -1; }
-    else if (!strcmp(call->name, "list_plugins")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugins_summary(c, result, cap) < 0) rc = jerr(result, cap, "too many plugins to list"); }
+    else if (!strcmp(call->name, "list_plugins")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugins_summary(c, result, cap) < 0) rc = jerr(result, cap, "too many plugins to list");
+        else { char *inst = malloc(60000); size_t l = strlen(result);
+            if (inst && installed_plugins(inst, 60000) > 0 && l + strlen(inst) + 30 < cap) { char *loaded = strdup(result); if (loaded) { snprintf(result, cap, "{\"loaded\":%s,%s}", loaded, inst); free(loaded); } }
+            free(inst); } }
     else if (!strcmp(call->name, "get_plugin_params")) { if (!c) rc = jerr(result, cap, "no commander connection"); else if (cmdr_plugin_params_match(c, (int)djson_num(a, "id", -1), djson_str(a, "match", ""), result, cap) < 0) rc = jerr(result, cap, "no plugin with that id, or the list is too long: pass match"); }
     else if (!strcmp(call->name, "set_param")) {
         char text[96];
