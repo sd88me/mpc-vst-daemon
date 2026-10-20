@@ -25,3 +25,7 @@ key("key_hide.svg", 180, "HIDE", size=24, ink=DIM)
 key("key_send.svg", 220, "SEND", fill=AMBER, ink=BG, size=28, stroke=AMBER)
 key("btn_keys.svg", 100, "KEYS", size=18, h=48)
 svg("kb_bg.svg", 1280, 394, '<rect width="1280" height="394" fill="%s"/><rect y="0.5" width="1280" height="1" fill="%s"/>' % (BG, LINE))
+# [TALK] greyed out while Daemon Listen is not detected (the button keeps working: it explains what is missing)
+FAINT = "#4a300a"
+svg("btn_talk_dim.svg", 103, 39, '<rect x="1" y="1" width="101" height="37" rx="4" fill="%s" stroke="%s" stroke-width="2"/>' % (BG, FAINT)
+    + '<text x="51.5" y="25" font-family="Titillium Web" font-size="16" font-weight="700" letter-spacing="1" fill="%s" text-anchor="middle">[TALK]</text>' % FAINT)

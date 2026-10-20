@@ -414,6 +414,46 @@
    "name": "Add-ins",
    "display": "string",
    "poll": false
+  },
+  {
+   "key": "mic",
+   "name": "Listen effect seen",
+   "options": [
+    "off",
+    "on"
+   ],
+   "default": "off"
+  },
+  {
+   "key": "micinfo",
+   "name": "Listen effect"
+  },
+  {
+   "key": "keyinfo",
+   "name": "API key"
+  },
+  {
+   "key": "model",
+   "name": "Model"
+  },
+  {
+   "key": "models_info",
+   "name": "Model list"
+  },
+  {
+   "key": "model_prev",
+   "name": "Model prev",
+   "momentary": true
+  },
+  {
+   "key": "model_next",
+   "name": "Model next",
+   "momentary": true
+  },
+  {
+   "key": "models_refresh",
+   "name": "Refresh models",
+   "momentary": true
   }
  ]
 }

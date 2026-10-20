@@ -592,6 +592,7 @@ static int get_param(void *inst, const char *k, char *b, int n) {
         char t[120]; if (cur) snprintf(t, sizeof t, "%s  (%d of %d)", d->model, cur, d->nmodels); else snprintf(t, sizeof t, "%s%s", d->model, d->nmodels ? "  (not in the list)" : ""); r = put_text(b, n, t); }
     else if (!strcmp(k, "models_info")) r = put_text(b, n, d->models_msg[0] ? d->models_msg : "press REFRESH to list the models your key can use");
     else if (!strcmp(k, "mic")) r = snprintf(b, n, "%s", d->has_tap ? "on" : "off");
+    else if (!strcmp(k, "micinfo")) r = put_text(b, n, d->has_tap ? "detected: TALK is ready" : "not found: insert Daemon Listen on the audio track that carries the mic");
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
