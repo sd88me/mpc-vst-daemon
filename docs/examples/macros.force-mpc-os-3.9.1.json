@@ -401,8 +401,9 @@
     {
      "find_tap": "{group}",
      "if_param": "group",
-     "hint": "the collapsed type group header row in the plugin picker (Delay/Reverb, Dynamics, EQ/Filter, Harmonic, Modulation, Vocal, Vintage Effects or VST): tapping it expands it",
-     "label": "expand the plugin's type group"
+     "hint": "the type group header row in the plugin picker named like this (Delay/Reverb, Dynamics, EQ/Filter, Harmonic, Modulation, Vocal, Vintage Effects or VST). Report it ONLY when it is collapsed (a + icon at its left): the picker remembers the last group, so if that group is already expanded (a - icon at its left, its plugins listed below it) report it as not found",
+     "label": "expand the plugin's type group",
+     "optional": 1
     },
     {
      "wait": 400
