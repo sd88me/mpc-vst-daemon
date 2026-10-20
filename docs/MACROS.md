@@ -81,7 +81,7 @@ to find the next free slot of a track.
   field only shows the instrument and does not open a list. Effects load from the **Mixer, EFFECTS tab**: the insert slots of a track strip sit at x = 80 + 160*(track-1),
   y = 370 + 86*(slot-1); tapping an empty one opens the plugin picker (TYPE tab; the VST group is the last row and stays expanded between openings), SELECT is at (960, 770).
 - Step options added for this: `skip_if` (a fingerprint name; the step is skipped when the screen already looks like it, used so the VST group is not collapsed by a second tap)
-  and, on `find_tap`, `tries` (0 to 8) with `scroll_at` [x, y] and `amount`: scroll the list and ask the model again.
+  and, on `find_tap`, `tries` (0 to 8) with `scroll_at` [x, y] and `amount`: scroll the list and ask the model again; `double` (1) double-taps the found point (opens a folder or row).
 - The bottom `+` / `-` buttons of the Track Settings dialog step to the next / previous track (past the last one they reach the submixes): do not use them to change values.
 
 ## load_efx vs load_instrument
@@ -112,3 +112,6 @@ then run the macro from the agent and watch the screen. Re-record when the MPC O
 
 ## Effects for a style ("dubby chords")
 `load_efx` is the add-effect macro. The agent prompt now says when to use it: dub wants a delay plus a reverb, ambient a big reverb, lo-fi tape or bit-crush. It uses `list_plugins` for what is installed, `load_efx` onto the track, then `get_plugin_params` and `set_param` for mix, time and feedback.
+
+## import_clip: the saved-parts folder is found by name
+The browser's root listing sorts by modification time, so the saved-parts folder is not always the first row (copying files elsewhere, e.g. a plugin deploy, changes the order). `import_clip` now `find_tap`s the `folder` row with `double: 1` instead of double-tapping the first row; the newest file inside it is still the first row. 2026-10-20.

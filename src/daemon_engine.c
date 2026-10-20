@@ -165,7 +165,12 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         int bl = agent_build_request(&ctx, &h, body, 1400000);
         if (bl < 0) { publish_error(d, "ERROR %s", "conversation too long"); done = 1; break; }
         { char r[24]; snprintf(r, sizeof r, "%d", round + 1); pthread_mutex_lock(&d->mu); set_status(d, S_THINKING, "THINKING, STEP %s", r); pthread_mutex_unlock(&d->mu); }
-        int code = d->io->http_post(s->url, s->key, body, (size_t)bl, resp, 600000, 150);
+        int code = 0;
+        for (int tries = 0; tries < 3; tries++) {          /* Gemini answers 503/429 under load: try again after a pause */
+            code = d->io->http_post(s->url, s->key, body, (size_t)bl, resp, 600000, 150);
+            if (code != 503 && code != 429 && code != 500) break;
+            for (int w = 0; w < 30 * (tries + 1); w++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
+        }
         if (code == 0) { char m[100]; snprintf(m, sizeof m, "no network: %.70s", resp); publish_error(d, "ERROR %s", m); done = 1; break; }
         if (agent_parse_turn(resp, &t) < 0) { char m[100]; snprintf(m, sizeof m, "%d %.80s", code, t.text); publish_error(d, "ERROR %s", m); done = 1; break; }
         if (t.n == 0) {                                                                   /* an answer, nothing to do */

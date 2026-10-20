@@ -243,12 +243,11 @@
      "expect": "u_root"
     },
     {
-     "double_tap": [
-      524,
-      334
-     ],
+     "find_tap": "{folder}",
+     "double": 1,
+     "hint": "the folder row in the browser list named exactly this: the saved-parts folder at the top level of the drive (not a Synths or plugin folder)",
      "require_change": true,
-     "label": "first row: the newest folder, Daemon"
+     "label": "the saved-parts folder (by name; the first row is not always the newest)"
     },
     {
      "wait_stable": 1500

@@ -56,7 +56,7 @@ static int eval_jv(jv *v, const char **names, const double *vals, int n, double 
 
 /* ---- validation ---- */
 static const char *STEP_KEYS[] = { "tap", "double_tap", "long_press", "press", "wait", "wait_stable", "wait_change", "scroll", "find_tap", "find_empty", "call", "repeat", "expect", NULL };
-static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", "skip_if", "scroll_at", "tries", "if_param", NULL };
+static const char *OPT_KEYS[] = { "label", "require_change", "hold_ms", "hint", "direction", "amount", "steps", "count", "args", "timeout_ms", "skip_if", "scroll_at", "tries", "if_param", "double", NULL };
 static int in_list(const char *k, const char **l) { for (; *l; l++) if (!strcmp(k, *l)) return 1; return 0; }
 
 static int check_steps(macros_t *m, jv *steps, const char *macro, char *err, size_t cap, int depth) {
@@ -234,7 +234,7 @@ static int run_steps(run_t *r, jv *steps, const char *macro, int depth) {
                 if (rc >= 0) break;
             }
             if (rc < 0) return fail(r, "could not find on screen: %.160s", why[0] ? why : target, i, macro);
-            if (touch(r, "tap", x, y, s, macro, i, 1)) return -1;      /* a found target must do something, unless the step says otherwise */
+            if (touch(r, djson_num(s, "double", 0) != 0 ? "double_tap" : "tap", x, y, s, macro, i, 1)) return -1;      /* a found target must do something, unless the step says otherwise; "double": 1 opens a folder or row */
         } else if ((a = djson_get(s, "find_empty"))) {
             /* the first of `count` cells (centres origin + k*step) that looks like the stored "empty cell" fingerprint, by brightness only */
             jv *o = djson_get(a, "origin"), *st = djson_get(a, "step"), *sz = djson_get(a, "size"); double ox, oy, dx, dy;
