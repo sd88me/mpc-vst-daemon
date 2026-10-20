@@ -97,6 +97,10 @@ int main(void) {
       CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0, "list with factory plugins: %s", r);
       CHECK(strstr(r, "{\"name\":\"Ext Verb\",\"category\":\"Effect\",\"group\":\"VST\"}") && strstr(r, "{\"name\":\"AIR Reverb\",\"category\":\"Effect\",\"group\":\"Delay/Reverb\",\"factory\":true}") && strstr(r, "\"name\":\"Delay Analog\"") && strstr(r, "\"group\":\"Modulation\",\"factory\":true}"), "factory effects with their picker groups: %s", r);
       CHECK(strstr(r, "\"installed_instruments\":[") && strstr(strstr(r, "installed_instruments"), "\"name\":\"Solina\"") && strstr(strstr(r, "installed_instruments"), "\"name\":\"Hype\"") && !strstr(strstr(r, "installed_instruments"), "AIR Chorus"), "factory instruments are listed apart: %s", r);
+      snprintf(cmd, sizeof cmd, "mkdir -p '%s/Content/Akai Professional - MPC - Chorus 4-voice' '%s/Content/AIR Music Technology - MPC - DrumSynthKick' '%s/Content/Generic'", root, root, root); if (system(cmd) != 0) return 1;
+      char fdir[320]; snprintf(fdir, sizeof fdir, "%s/Content", root); setenv("DAEMON_FACTORY_DIR", fdir, 1);
+      CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "{\"name\":\"Chorus 4-voice\",\"category\":\"Effect\",\"group\":\"Modulation\",\"factory\":true}") && strstr(strstr(r, "installed_instruments"), "DrumSynthKick") && !strstr(r, "Generic"), "the built-in plugin folder is read: %s", r);
+      unsetenv("DAEMON_FACTORY_DIR");
       snprintf(cmd, sizeof cmd, "rm -rf '%s'", root); if (system(cmd)) {} unsetenv("DAEMON_MPC_SETTINGS"); }
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":5}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "Cutoff"), "get_plugin_params: %.80s", r);
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":77}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "error"), "unknown plugin: %s", r);

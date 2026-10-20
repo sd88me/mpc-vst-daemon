@@ -187,8 +187,8 @@ static void scan_factory(const char *dir, int force_kind, inst_ent *e, int *n, i
         const char *nm = strstr(de->d_name, " - MPC - "); if (!nm) continue; nm += 9;
         if (!nm[0] || strlen(nm) >= sizeof e->name || ent_has(e, *n, nm)) continue;
         inst_ent *x = &e[(*n)++]; memset(x, 0, sizeof *x); snprintf(x->name, sizeof x->name, "%s", nm); x->factory = 1;
-        static const char *INSTR[] = { "Solina", "Mellotron", "Odyssey", "Hype", "Bassline", NULL };
-        x->inst = force_kind >= 0 ? force_kind : 0; if (force_kind < 0) for (int i = 0; INSTR[i]; i++) if (!strcmp(nm, INSTR[i])) x->inst = 1;
+        static const char *INSTR[] = { "Solina", "Mellotron", "Odyssey", "Hype", "Bassline", "Electric", "TubeSynth", "DrumSynth", NULL };
+        x->inst = force_kind >= 0 ? force_kind : 0; if (force_kind < 0) for (int i = 0; INSTR[i]; i++) if (!strncmp(nm, INSTR[i], strlen(INSTR[i]))) x->inst = 1;
         snprintf(x->cat, sizeof x->cat, "%s", x->inst ? "Instrument" : "Effect"); snprintf(x->group, sizeof x->group, "%s", x->inst ? "" : factory_group(nm));
     }
     closedir(d);
@@ -233,6 +233,7 @@ static int installed_plugins(char *out, size_t cap) {
         snprintf(pdir, sizeof pdir, "%s/Force Documents/Plugin Presets/Instruments", root); scan_factory(pdir, 1, E, &ne, MAXE);
         scan_factory(synths, -1, E, &ne, MAXE);
     }
+    { const char *fd = getenv("DAEMON_FACTORY_DIR"); scan_factory(fd ? fd : "/usr/share/Akai/Content/Synths", -1, E, &ne, MAXE); }   /* the whole built-in set, with presets inside each folder */
     size_t o = 0;
     for (int kind = 0; kind < 2; kind++) {                 /* 0 effects, 1 instruments */
         o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":[", kind ? "," : "", kind ? "instruments" : "effects"); int cn = 0;
