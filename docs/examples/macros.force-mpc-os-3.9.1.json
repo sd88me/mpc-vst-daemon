@@ -376,7 +376,7 @@
     {
      "find_empty": {
       "origin": [
-       "80 + 160*(track-1)",
+       "80 + 159*(track-1)",
        370
       ],
       "step": [

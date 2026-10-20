@@ -142,7 +142,12 @@ static int vision_gemini(void *u, const char *target, const char *hint, const ch
     int bl = daemon_build_vision_request(target, hint, png, w, h, body, strlen(png) + 2000);
     if (bl < 0) snprintf(why, wc, "screenshot too large");
     else {
-        int code = d->io->http_post(c->s->url, c->s->key, body, (size_t)bl, resp, 200000, 60);
+        int code = 0;
+        for (int tries = 0; tries < 3; tries++) {         /* Gemini answers 503/429 under load: try again after a pause */
+            code = d->io->http_post(c->s->url, c->s->key, body, (size_t)bl, resp, 200000, 60);
+            if (code != 503 && code != 429 && code != 500) break;
+            for (int w2 = 0; w2 < 20 * (tries + 1); w2++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
+        }
         if (code == 0) snprintf(why, wc, "no network: %.100s", resp);
         else if (daemon_extract_text(resp, text, 200000) < 0) snprintf(why, wc, "%d %.100s", code, text);
         else rc = daemon_parse_point(text, w, h, x, y, why, wc);
