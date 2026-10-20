@@ -9,9 +9,9 @@
 #include <string.h>
 
 static const char *READ_ONLY[] = { "get_project", "list_plugins", "get_plugin_params" };
-static const char *MUTATING[] = { "set_param", "transport", "play_part", "select_track", "load_efx", "load_instrument", "load_preset", "import_clip" };
+static const char *MUTATING[] = { "set_param", "transport", "play_part", "select_track", "load_efx", "load_instrument", "load_preset", "import_clip", "add_track" };
 int agent_tool_is_read_only(const char *n) { for (int i = 0; i < 3; i++) if (!strcmp(n, READ_ONLY[i])) return 1; return 0; }
-int agent_tool_is_ui(const char *n) { return !strcmp(n, "select_track") || !strcmp(n, "load_efx") || !strcmp(n, "load_instrument") || !strcmp(n, "load_preset") || !strcmp(n, "import_clip"); }
+int agent_tool_is_ui(const char *n) { return !strcmp(n, "select_track") || !strcmp(n, "load_efx") || !strcmp(n, "load_instrument") || !strcmp(n, "load_preset") || !strcmp(n, "import_clip") || !strcmp(n, "add_track"); }
 int agent_tool_known(const char *n) { if (agent_tool_is_read_only(n)) return 1; for (size_t i = 0; i < sizeof MUTATING / sizeof *MUTATING; i++) if (!strcmp(n, MUTATING[i])) return 1; return 0; }
 
 /* ---- history ---- */
@@ -77,21 +77,23 @@ static const char *TOOL_PRESET =
  ",{\"name\":\"load_preset\",\"description\":\"Choose a preset of the instrument already loaded on a plugin track, finding it by name in the preset list on the MPC's screen. Presets are often inside a folder: give the folder if you know it.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"preset\":{\"type\":\"STRING\",\"description\":\"the preset's name as listed, e.g. Rich Strings\"},\"folder\":{\"type\":\"STRING\",\"description\":\"the folder it is in, e.g. Modern; leave out if it is at the top of the list or you do not know\"}},\"required\":[\"track\",\"preset\"]}}";
 static const char *TOOL_IMPORT =
  ",{\"name\":\"import_clip\",\"description\":\"Save the part Daemon has made (after play_part) as a MIDI file and load it into the first empty clip slot of a track in the clip matrix, by touching the screen. The track number is the musician's, counted from 1.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
+static const char *TOOL_ADD =
+ ",{\"name\":\"add_track\",\"description\":\"Add a new empty Plugin track at the end of the project, by touching the MPC's screen. It becomes the next track number after the last one. Daemon cannot see it in get_project until the musician saves the project.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{}}}";
 static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
-    char sys[4200];
+    char sys[5800];
     snprintf(sys, sizeof sys,
         "You help a musician run an Akai MPC by voice or text. You can read the project and plugins, set plugin parameters, press transport buttons and make MIDI parts, all through the tools. "
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Selecting or loading touches the screen and is slow, so do it only when asked. "
+        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins to find the best matching effects installed (a delay and a reverb for dub), load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
         ctx->channel > 0 ? ctx->channel : 1, ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
     size_t n = 0; int w;
-    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s%s%s%s%s%s%s,\"contents\":[", s, TOOLS, (ctx->has_ui & 1) ? TOOL_SELECT : "", (ctx->has_ui & 2) ? TOOL_LOAD : "", (ctx->has_ui & 8) ? TOOL_INSTR : "", (ctx->has_ui & 16) ? TOOL_PRESET : "", (ctx->has_ui & 4) ? TOOL_IMPORT : "", TOOLS_END); free(s);
+    w = snprintf(buf, cap, "{\"system_instruction\":{\"parts\":[{\"text\":%s}]},\"tools\":%s%s%s%s%s%s%s%s,\"contents\":[", s, TOOLS, (ctx->has_ui & 1) ? TOOL_SELECT : "", (ctx->has_ui & 2) ? TOOL_LOAD : "", (ctx->has_ui & 8) ? TOOL_INSTR : "", (ctx->has_ui & 16) ? TOOL_PRESET : "", (ctx->has_ui & 4) ? TOOL_IMPORT : "", (ctx->has_ui & 32) ? TOOL_ADD : "", TOOLS_END); free(s);
     if (w < 0 || (size_t)w >= cap) return -1;
     n = (size_t)w;
     for (int i = 0; i < h->n; i++) {
@@ -196,6 +198,7 @@ int agent_describe(cmdr_t *c, const acall_t *call, char *out, size_t cap) {
     if (!strcmp(call->name, "set_param")) snprintf(out, cap, "set %s %s to %.0f%%", plug[0] ? plug : "plugin", pname[0] ? pname : "parameter", djson_num(a, "value", 0) * 100);
     else if (!strcmp(call->name, "transport")) snprintf(out, cap, "press %s", djson_str(a, "cmd", "?"));
     else if (!strcmp(call->name, "select_track")) snprintf(out, cap, "select track %d", (int)djson_num(a, "track", 0));
+    else if (!strcmp(call->name, "add_track")) snprintf(out, cap, "add a Plugin track");
     else if (!strcmp(call->name, "import_clip")) snprintf(out, cap, "clip into track %d", (int)djson_num(a, "track", 0));
     else if (!strcmp(call->name, "load_instrument")) snprintf(out, cap, "load instrument %s on track %d", djson_str(a, "plugin", "?"), (int)djson_num(a, "track", 0));
     else if (!strcmp(call->name, "load_preset")) snprintf(out, cap, "load preset %s%s%s on track %d", djson_str(a, "folder", ""), djson_str(a, "folder", "")[0] ? " / " : "", djson_str(a, "preset", "?"), (int)djson_num(a, "track", 0));

@@ -156,7 +156,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     char note[300] = "";   /* what the add-in probe saw: tell the model what it can't use, so it says so instead of planning it */
     if (!c) snprintf(note, sizeof note, "The commander addin is not reachable, so project and plugin tools will fail; say so. ");
     if (!s->has_remote) { size_t l = strlen(note); snprintf(note + l, sizeof note - l, "The remote addin is not reachable, so there are no screen tools (select a track, load a plugin or instrument, import a clip); say so if asked for one."); }
-    int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0) | (macros_has(d->macros, "load_preset") ? 16 : 0);
+    int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0) | (macros_has(d->macros, "load_preset") ? 16 : 0) | (macros_has(d->macros, "add_track") ? 32 : 0);
     actx_t ctx = { s->bpm, s->scale, s->bars, note, s->has_remote ? ui : 0, s->channel };
     uictx uc = { d, s, NULL };
     char *tool_res = malloc(200000); char *rs[AGENT_MAX_CALLS]; aturn_t t;
@@ -207,11 +207,11 @@ static void agent_run(dm_t *d, const snap_t *s) {
     aturn_t plan = d->plan; plan.raw = NULL;                     /* a copy of the calls; the plan keeps the raw turn */
     pthread_mutex_unlock(&d->mu);
     char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);
-    char *res = malloc(8000); int ok = 0, total = 0; char first_err[100] = ""; uictx uc = { d, s, NULL };
+    char *res = malloc(8000); int ok = 0, total = 0, structural = 0; char first_err[100] = ""; uictx uc = { d, s, NULL };
     for (int i = 0; i < plan.n; i++) if (!agent_tool_is_read_only(plan.calls[i].name)) total++;
     for (int i = 0; i < plan.n; i++) {
         if (agent_tool_is_read_only(plan.calls[i].name)) continue;
-        if (agent_exec(c, &plan.calls[i], play_part_cb, ui_cb, &uc, res, 8000) == 0) ok++;
+        if (agent_exec(c, &plan.calls[i], play_part_cb, ui_cb, &uc, res, 8000) == 0) { ok++; if (!strcmp(plan.calls[i].name, "add_track") || !strcmp(plan.calls[i].name, "load_instrument") || !strcmp(plan.calls[i].name, "load_efx")) structural = 1; }
         else {
             if (!first_err[0]) snprintf(first_err, sizeof first_err, "%.50s: %.40s", plan.calls[i].name, res);
             if (agent_tool_is_ui(plan.calls[i].name)) break;       /* the screen is in an unknown state: do not go on */
@@ -221,7 +221,7 @@ static void agent_run(dm_t *d, const snap_t *s) {
     pthread_mutex_lock(&d->mu);
     d->plan_ok = 0; agent_turn_free(&d->plan);
     char m[160];
-    if (ok == total) { snprintf(m, sizeof m, "%d", total); set_status(d, S_DONE, "RAN %s STEPS", m); }
+    if (ok == total) { snprintf(m, sizeof m, "%d", total); set_status(d, S_DONE, structural ? "RAN %s STEPS: now SAVE the project so Daemon sees it" : "RAN %s STEPS", m); }
     else { snprintf(m, sizeof m, "RAN %d of %d: %s", ok, total, first_err); set_status(d, S_ERROR, "%s", m); }
     pthread_mutex_unlock(&d->mu);
 }

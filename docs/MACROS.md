@@ -106,3 +106,9 @@ then run the macro from the agent and watch the screen. Re-record when the MPC O
 
 ## load_preset
 `load_preset(track, preset, folder?)` (agent tool bit 16): Mixer, EFFECTS tab, double tap the track title (Track Settings), double tap the PRESET field (940, 598). The preset list opens as a panel on the left; stock instruments such as Solina keep presets in folders (a row with an arrow), a preset row loads it and returns to Track Settings, then the X (1152, 86) closes. `folder` is optional: a macro parameter with `"optional": true`, and a step with `"if_param": "folder"` runs only when it was given. Plugins without presets (Dexed, Chordsmith, Clementine-XT here) have a PRESET field that does not open. Recorded 2026-10-14 on a Force (MPC OS 3.9.1) with Solina; not run end to end through the agent yet.
+
+## add_track
+`add_track()` (agent tool bit 32, no parameters): Mixer, EFFECTS tab (header row visible), `find_tap` the dashed **+** tile after the last track (it moves right 160 px per track, so vision finds it), then **Plugin** in the Add Track dialog (916 x 740 half-scale layout: Audio 250, Drum 405, Plugin 560, Keygroup 715, MIDI 870, CV 1025 at y 370). The new track is selected and the screen stays on the Mixer. Recorded by hand 2026-10-20 on a Force (MPC OS 3.9.1): the tap on Plugin made "Plugin 003" as track 5. The agent cannot see the new track until the project is saved (the commander reads the saved file), so after a run with `add_track`, `load_instrument` or `load_efx` Daemon's status says to SAVE the project, and the model is told to count the new track as the next number.
+
+## Effects for a style ("dubby chords")
+`load_efx` is the add-effect macro. The agent prompt now says when to use it: dub wants a delay plus a reverb, ambient a big reverb, lo-fi tape or bit-crush. It uses `list_plugins` for what is installed, `load_efx` onto the track, then `get_plugin_params` and `set_param` for mix, time and feedback.

@@ -226,7 +226,7 @@ int main(void) {
         fake.nq = 2; int vp = fake.posts;
         E->set_param(g, "run", "1");
         for (int i = 0; i < 600 && strncmp(get(g, "status"), "RAN", 3) && strncmp(get(g, "status"), "ERROR", 5); i++) usleep(10000);
-        CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS"), "device run: '%s'", get(g, "status"));
+        CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS: now SAVE the project so Daemon sees it"), "device run: '%s'", get(g, "status"));
         CHECK(fake.posts == vp + 1 && strstr(fake.body, "image/png") && strstr(fake.body, "reads: 9W9"), "one vision request with the screenshot: %.120s", fake.body);
         E->destroy(g);
 

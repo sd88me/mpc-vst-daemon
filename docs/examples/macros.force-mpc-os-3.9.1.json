@@ -651,6 +651,49 @@
      "wait": 400
     }
    ]
+  },
+  "add_track": {
+   "steps": [
+    {
+     "press": "MIXER",
+     "label": "mixer"
+    },
+    {
+     "wait_stable": 2000
+    },
+    {
+     "tap": [
+      770,
+      770
+     ],
+     "require_change": false,
+     "label": "EFFECTS tab (any tab shows the headers)"
+    },
+    {
+     "wait": 400
+    },
+    {
+     "expect": "mixer_effects"
+    },
+    {
+     "find_tap": "+",
+     "hint": "the dashed + tile at the right end of the track header row at the top, after the last track (it moves right by one track width for each track)"
+    },
+    {
+     "wait": 600
+    },
+    {
+     "tap": [
+      560,
+      370
+     ],
+     "require_change": true,
+     "label": "Plugin in the Add Track dialog (Audio 250, Drum 405, Plugin 560, Keygroup 715, MIDI 870, CV 1025)"
+    },
+    {
+     "wait_stable": 1500
+    }
+   ]
   }
  }
 }

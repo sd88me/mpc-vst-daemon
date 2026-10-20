@@ -69,6 +69,7 @@ int main(void) {
       CHECK(strstr(r3, "\"import_clip\"") && !strstr(r3, "\"select_track\"") && !strstr(r3, "\"load_efx\""), "only the screen tools whose macro exists are offered");
       actx_t ins = { 124, "F Minor", 4, "", 8, 0 }; static char r4[1 << 20]; agent_build_request(&ins, &h, r4, sizeof r4);
       { actx_t pr = { 124, "F Minor", 4, "", 16, 0 }; static char r5[1 << 20]; agent_build_request(&pr, &h, r5, sizeof r5); CHECK(strstr(r5, "\"name\":\"load_preset\"") && !strstr(r5, "\"name\":\"load_instrument\""), "load_preset is offered by bit 16"); }
+      { actx_t pa = { 124, "F Minor", 4, "", 32, 0 }; static char r6[1 << 20]; agent_build_request(&pa, &h, r6, sizeof r6); CHECK(strstr(r6, "\"name\":\"add_track\"") && !strstr(r6, "\"name\":\"load_preset\"") && !strstr(req, "\"name\":\"add_track\""), "add_track is offered by bit 32"); CHECK(agent_tool_is_ui("add_track") && agent_tool_known("add_track"), "add_track is a known UI tool"); }
       CHECK(strstr(r4, "\"name\":\"load_instrument\"") && !strstr(r2, "\"name\":\"load_instrument\"") && !strstr(r4, "\"name\":\"load_efx\""), "load_instrument is its own tool, offered by bit 8"); }
     agent_hist_free(&h);
 
