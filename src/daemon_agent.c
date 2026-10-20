@@ -2,7 +2,9 @@
  * Copyright (C) 2026 sd88me */
 #define _GNU_SOURCE
 #include "daemon_agent.h"
+#include <dirent.h>
 #include <glob.h>
+#include <ctype.h>
 #include <strings.h>
 #include "daemon_json.h"
 #include <stdio.h>
@@ -71,7 +73,7 @@ static const char *TOOLS =
 static const char *TOOL_SELECT =
  ",{\"name\":\"select_track\",\"description\":\"Select a track on the MPC's screen by touching it (a recorded sequence of touches). Needed before anything that works on the selected track.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"}},\"required\":[\"track\"]}}";
 static const char *TOOL_LOAD =
- ",{\"name\":\"load_efx\",\"description\":\"Load an effect plugin into the first free insert slot of a track's mixer strip, finding it in the MPC's plugin browser by name. Selects the track itself. Not for instruments: use load_instrument for those.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name as listed in the MPC, e.g. 9W9\"}},\"required\":[\"track\",\"plugin\"]}}";
+ ",{\"name\":\"load_efx\",\"description\":\"Load an effect plugin into the first free insert slot of a track's mixer strip, finding it in the MPC's plugin browser by name. Selects the track itself. Not for instruments: use load_instrument for those.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the plugin's name exactly as in installed_effects, e.g. AIR Reverb\"},\"group\":{\"type\":\"STRING\",\"description\":\"the plugin picker's type group that lists it: use the group given in installed_effects (Delay/Reverb, Dynamics, EQ/Filter, Harmonic, Modulation, Vocal, Vintage Effects, or VST for third-party plugins)\"}},\"required\":[\"track\",\"plugin\"]}}";
 static const char *TOOL_INSTR =
  ",{\"name\":\"load_instrument\",\"description\":\"Load a plugin as the instrument (the sound source) of a plugin track, finding it in the MPC's plugin browser by name. Replaces the track's current instrument.\",\"parameters\":{\"type\":\"OBJECT\",\"properties\":{\"track\":{\"type\":\"INTEGER\"},\"plugin\":{\"type\":\"STRING\",\"description\":\"the instrument's name as listed in the MPC, e.g. Hera\"}},\"required\":[\"track\",\"plugin\"]}}";
 static const char *TOOL_PRESET =
@@ -83,13 +85,13 @@ static const char *TOOL_ADD =
 static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
-    char sys[5800];
+    char sys[6600];
     snprintf(sys, sizeof sys,
         "You help a musician run an Akai MPC by voice or text. You can read the project and plugins, set plugin parameters, press transport buttons and make MIDI parts, all through the tools. "
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
         "Parts: each note is an array [pitch, start_time, duration, velocity], positions and lengths are in beats (1.0 = a quarter note), pitches are MIDI note numbers, General MIDI drum notes for beats (36 kick, 38 snare, 42 closed hat, 46 open hat, 39 clap), channel 2 unless told otherwise. "
         "Keep melodic notes in the musician's scale unless they ask otherwise. Plugin values run 0 to 1 and the result of set_param tells you the text MPC shows, so use it to land on musical settings. "
-        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins and pick effects from installed_effects only, never a name that is not in that list (a delay or echo and a reverb for dub; if nothing is a delay, say so and use what is closest; names and categories hint at what each does), load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
+        "Track numbers in get_project start at 0: the musician's track 1 is index 0, so say track numbers to them as index plus one. The screen tools (select_track, load_efx, load_instrument, load_preset, import_clip) count tracks from 1, as the musician does. Daemon's MIDI channel is set to %d: use it for play_part unless the musician names another channel. import_clip selects the track itself: do not call select_track before it. A track you add is not in get_project until the musician saves the project: count it as the next number after the last track you can see (plus any you already added in this plan), use it with load_instrument in the same plan, and tell the musician to save the project afterwards so you can see it. You cannot rename or delete anything: say so briefly if asked, and do what you can. Loading an effect or an instrument is only possible when load_efx or load_instrument exists; otherwise say you cannot. A sound request (a plucky lead, a warm pad) on a synth: load_instrument if it is not loaded yet, then shape it with get_plugin_params and set_param, or choose a stock preset with load_preset when that exists (its folder and name are only known from the screen: name what you expect, and say if it was not found). Style requests often call for effects: dub or dubby wants a tape or echo delay with feedback plus a reverb, ambient or washed-out wants a big reverb, lo-fi wants tape, filter or bit-crush, huge or wide wants chorus or reverb. When load_efx exists and the style implies it, use list_plugins and pick effects from installed_effects only, never a name that is not in that list. Choose the obvious plugin: for a reverb one whose name says reverb (AIR Reverb is the default), for a delay or echo one whose name says delay or echo (AIR Multitap Delay, Delay Analog), for chorus, compression, tape, filter likewise; prefer the device's own factory effects (factory:true) over third-party ones unless the musician names one. Never use a plugin whose name does not say what it does as a stand-in (a Tap FX is not a delay): if nothing installed fits, say so in your reply instead of guessing. Pass the group shown for that plugin in installed_effects as load_efx's group, load_efx them on the track that carries the part, then set their mix, time and feedback with get_plugin_params and set_param so the effect is clearly audible but musical. Do not add effects the style does not suggest, and do not add one that is already on the track. Selecting or loading touches the screen and is slow, so do it only when asked or when the style clearly implies it. "
         "Finish with one or two plain sentences saying what the plan does. Tempo %.0f BPM, default scale %s, default length %d bars. %s",
         ctx->channel > 0 ? ctx->channel : 1, ctx->bpm, ctx->scale, ctx->bars, ctx->typed_context ? ctx->typed_context : "");
     char *s = jstr_alloc(sys); if (!s) return -1;
@@ -162,6 +164,35 @@ static int tag_attr(const char *tag, const char *end, const char *key, char *out
     p += strlen(pat); const char *q = memchr(p, '"', (size_t)(end - p)); if (!q || (size_t)(q - p) >= cap) return -1;
     memcpy(out, p, (size_t)(q - p)); out[q - p] = 0; xml_unesc(out); return 0;
 }
+typedef struct { char name[120], cat[60], group[24]; int inst, factory; } inst_ent;
+static int ent_has(const inst_ent *e, int n, const char *name) { for (int i = 0; i < n; i++) if (!strcmp(e[i].name, name)) return 1; return 0; }
+/* The picker's type group for a factory effect, from its name (the MPC groups its own effects like this; third-party ones are all under VST). */
+static const char *factory_group(const char *name) {
+    static const struct { const char *g, *w[8]; } G[] = {
+        { "Delay/Reverb", { "reverb", "delay", "echo", NULL } },
+        { "Modulation", { "chorus", "flang", "phas", "tremolo", "vibrato", "modul", NULL } },
+        { "Dynamics", { "compress", "expander", "limit", "gate", "trigger", NULL } },
+        { "Vintage Effects", { "vinyl", "tape", "vintage", "lo-fi", "lofi", NULL } },
+        { "EQ/Filter", { "filter", "equal", " eq", "channel strip", NULL } },
+        { "Harmonic", { "tube", "amp sim", "drive", "distort", "satur", "exciter", NULL } },
+        { "Vocal", { "vocal", "pitch", "harmoniz", "vocoder", NULL } },
+    };
+    char low[120]; size_t i = 0; for (; name[i] && i < sizeof low - 1; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
+    for (size_t g = 0; g < sizeof G / sizeof *G; g++) for (int w = 0; G[g].w[w]; w++) if (strstr(low, G[g].w[w])) return G[g].g;
+    return "";
+}
+static void scan_factory(const char *dir, int force_kind, inst_ent *e, int *n, int max) {   /* "<vendor> - MPC - <name>" folders; force_kind 0 effect, 1 instrument, -1 decide by name */
+    DIR *d = opendir(dir); if (!d) return;
+    for (struct dirent *de; (de = readdir(d)) && *n < max;) {
+        const char *nm = strstr(de->d_name, " - MPC - "); if (!nm) continue; nm += 9;
+        if (!nm[0] || strlen(nm) >= sizeof e->name || ent_has(e, *n, nm)) continue;
+        inst_ent *x = &e[(*n)++]; memset(x, 0, sizeof *x); snprintf(x->name, sizeof x->name, "%s", nm); x->factory = 1;
+        static const char *INSTR[] = { "Solina", "Mellotron", "Odyssey", "Hype", "Bassline", NULL };
+        x->inst = force_kind >= 0 ? force_kind : 0; if (force_kind < 0) for (int i = 0; INSTR[i]; i++) if (!strcmp(nm, INSTR[i])) x->inst = 1;
+        snprintf(x->cat, sizeof x->cat, "%s", x->inst ? "Instrument" : "Effect"); snprintf(x->group, sizeof x->group, "%s", x->inst ? "" : factory_group(nm));
+    }
+    closedir(d);
+}
 static int installed_plugins(char *out, size_t cap) {
     const char *path = getenv("DAEMON_MPC_SETTINGS"); glob_t g; char found[512] = "";
     if (path) snprintf(found, sizeof found, "%s", path);
@@ -170,23 +201,36 @@ static int installed_plugins(char *out, size_t cap) {
     FILE *f = fopen(found, "re"); if (!f) return 0;
     size_t cp = 1 << 20, n = 0; char *buf = malloc(cp); if (!buf) { fclose(f); return 0; }
     n = fread(buf, 1, cp - 1, f); fclose(f); buf[n] = 0;
-    size_t o = 0; int kind, cnt[2] = { 0, 0 };
-    for (kind = 0; kind < 2; kind++) {           /* 0 effects, 1 instruments */
-        o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":[", kind ? "," : "", kind ? "instruments" : "effects");
-        const char *k = strstr(buf, "<KNOWNPLUGINS>"), *stop = k ? strstr(k, "</KNOWNPLUGINS>") : NULL;
-        for (const char *t = k; k && (t = strstr(t, "<PLUGIN ")) && (!stop || t < stop); t += 8) {
-            const char *end = strstr(t, "/>"); if (!end) break;
-            char name[120], cat[60], isi[4], fmt[16];
-            if (tag_attr(t, end, "name", name, sizeof name) || tag_attr(t, end, "isInstrument", isi, sizeof isi)) continue;
-            if (tag_attr(t, end, "format", fmt, sizeof fmt) || strcmp(fmt, "VST") || (isi[0] == '1') != (kind == 1)) continue;
-            if (tag_attr(t, end, "category", cat, sizeof cat)) cat[0] = 0;
-            char *nj = jstr_alloc(name), *cj = jstr_alloc(cat); if (!nj || !cj) { free(nj); free(cj); continue; }
-            size_t need = strlen(nj) + strlen(cj) + 30; if (o + need + 8 >= cap) { free(nj); free(cj); break; }
-            o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":%s,\"category\":%s}", cnt[kind]++ ? "," : "", nj, cj); free(nj); free(cj);
+    enum { MAXE = 200 }; inst_ent *E = calloc(MAXE, sizeof *E); int ne = 0; char synths[400] = "";
+    const char *k = strstr(buf, "<KNOWNPLUGINS>"), *stop = k ? strstr(k, "</KNOWNPLUGINS>") : NULL;
+    for (const char *t = k; k && (t = strstr(t, "<PLUGIN ")) && (!stop || t < stop) && ne < MAXE; t += 8) {
+        const char *end = strstr(t, "/>"); if (!end) break;
+        char name[120], isi[4], fmt[16], file[400];
+        if (tag_attr(t, end, "name", name, sizeof name) || tag_attr(t, end, "isInstrument", isi, sizeof isi)) continue;
+        if (tag_attr(t, end, "format", fmt, sizeof fmt) || strcmp(fmt, "VST")) continue;
+        if (!synths[0] && !tag_attr(t, end, "file", file, sizeof file)) { char *sy = strstr(file, "/Synths/"); if (sy) { sy[7] = 0; snprintf(synths, sizeof synths, "%s", file); } }
+        inst_ent *x = &E[ne++]; memset(x, 0, sizeof *x); snprintf(x->name, sizeof x->name, "%s", name); x->inst = isi[0] == '1';
+        if (tag_attr(t, end, "category", x->cat, sizeof x->cat)) x->cat[0] = 0;
+        if (!x->inst) snprintf(x->group, sizeof x->group, "VST");
+    }
+    free(buf);
+    if (synths[0]) {                                       /* the device's own plugins: folders on the drive and the preset folders */
+        char root[400], pdir[520]; snprintf(root, sizeof root, "%s", synths); char *sl = strrchr(root, '/'); if (sl) *sl = 0;
+        snprintf(pdir, sizeof pdir, "%s/Force Documents/Plugin Presets/Insert Effects", root); scan_factory(pdir, 0, E, &ne, MAXE);
+        snprintf(pdir, sizeof pdir, "%s/Force Documents/Plugin Presets/Instruments", root); scan_factory(pdir, 1, E, &ne, MAXE);
+        scan_factory(synths, -1, E, &ne, MAXE);
+    }
+    size_t o = 0;
+    for (int kind = 0; kind < 2; kind++) {                 /* 0 effects, 1 instruments */
+        o += (size_t)snprintf(out + o, cap - o, "%s\"installed_%s\":[", kind ? "," : "", kind ? "instruments" : "effects"); int cn = 0;
+        for (int i = 0; i < ne; i++) if (E[i].inst == kind) {
+            char *nj = jstr_alloc(E[i].name), *cj = jstr_alloc(E[i].cat), *gj = jstr_alloc(E[i].group); if (!nj || !cj || !gj) { free(nj); free(cj); free(gj); continue; }
+            size_t need = strlen(nj) + strlen(cj) + strlen(gj) + 60; if (o + need + 8 >= cap) { free(nj); free(cj); free(gj); break; }
+            o += (size_t)snprintf(out + o, cap - o, "%s{\"name\":%s,\"category\":%s%s%s%s}", cn++ ? "," : "", nj, cj, E[i].group[0] ? ",\"group\":" : "", E[i].group[0] ? gj : "", E[i].factory ? ",\"factory\":true" : ""); free(nj); free(cj); free(gj);
         }
         o += (size_t)snprintf(out + o, cap - o, "]");
     }
-    free(buf);
+    free(E);
     return (int)o;
 }
 static int jerr(char *r, size_t cap, const char *msg) { jv v = { 's', 0, (char *)msg, NULL, NULL, NULL }; char e[300]; djson_write(&v, e, sizeof e); snprintf(r, cap, "{\"error\":%s}", e); return -1; }

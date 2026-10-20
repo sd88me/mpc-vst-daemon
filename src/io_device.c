@@ -94,7 +94,7 @@ static int http_post(const char *url, const char *key, const char *body, size_t 
     char kh[200]; snprintf(kh, sizeof kh, "x-goog-api-key: %s", key);
     hdr = slist_add(hdr, "Content-Type: application/json"); hdr = slist_add(hdr, kh);
     sink_t s = { resp, 0, cap }; if (cap) resp[0] = 0;
-    setopt(c, OPT_URL, url); setopt(c, OPT_POSTFIELDS, body); setopt(c, OPT_POSTFIELDSIZE, (long)len);
+    setopt(c, OPT_URL, url); if (body) { setopt(c, OPT_POSTFIELDS, body); setopt(c, OPT_POSTFIELDSIZE, (long)len); }   /* no body: a GET (the model list) */
     setopt(c, OPT_HTTPHEADER, hdr); setopt(c, OPT_WRITEFUNCTION, on_data); setopt(c, OPT_WRITEDATA, &s);
     setopt(c, OPT_TIMEOUT, (long)timeout_s); setopt(c, OPT_NOSIGNAL, 1L);
     setopt(c, OPT_CAINFO, "/etc/ssl/certs/ca-certificates.crt");

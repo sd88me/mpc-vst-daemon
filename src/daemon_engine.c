@@ -39,6 +39,7 @@ typedef struct {
     int th_up, drop_up, quit, pending, with_audio;
     const daemon_io_t *io; void *midi;
     char dir[256], clips_dir[300], key[128], model[64], url_base[160], input_dir[160]; int input_test;
+    char models[40][64]; int nmodels; char models_msg[96];      /* the models the key can use (generateContent), from the API; models_msg says how the last refresh went */
     int state, rev;
     char status[96], transcript[256], reply[512];
     int type, keyi, scale, bars, channel, play;
@@ -82,6 +83,37 @@ static void conf_load(dm_t *d) {
     fclose(f);
 }
 
+
+/* Set key=value in daemon.conf (replace the line or append it), through a temp file and a rename. 0 on success. */
+static int conf_set(const char *dir, const char *key, const char *val) {
+    char path[300], tmp[310], line[400]; snprintf(path, sizeof path, "%s/daemon.conf", dir); snprintf(tmp, sizeof tmp, "%s.new", path);
+    FILE *in = fopen(path, "r"), *out = fopen(tmp, "w"); if (!out) { if (in) fclose(in); return -1; }
+    size_t kl = strlen(key); int done = 0;
+    while (in && fgets(line, sizeof line, in)) {
+        if (!strncmp(line, key, kl) && line[kl] == '=') { if (!done) fprintf(out, "%s=%s\n", key, val); done = 1; }
+        else fputs(line, out);
+    }
+    if (!done) fprintf(out, "%s=%s\n", key, val);
+    if (in) fclose(in);
+    if (fclose(out) != 0 || rename(tmp, path) != 0) { remove(tmp); return -1; }
+    return 0;
+}
+
+/* The text-generating models in a ListModels reply: names without the "models/" prefix, no image, speech, embedding or live models. */
+static int models_parse(const char *json, char names[][64], int max) {
+    jv *r = djson_parse(json, strlen(json)); int n = 0; if (!r) return 0;
+    for (jv *m = djson_get(r, "models") ? djson_get(r, "models")->kid : NULL; m && n < max; m = m->next) {
+        const char *nm = djson_str(m, "name", ""); if (!strncmp(nm, "models/", 7)) nm += 7;
+        int gen = 0;
+        jv *meth = djson_get(m, "supportedGenerationMethods");
+        for (jv *g = meth ? meth->kid : NULL; g; g = g->next) if (g->t == 's' && !strcmp(g->str, "generateContent")) gen = 1;
+        if (!gen || strncmp(nm, "gemini", 6) || !nm[0] || strlen(nm) >= 64) continue;
+        static const char *SKIP[] = { "image", "tts", "embedding", "live", "audio", "robotics", "computer", "aqa", "customtools", "native", "omni", NULL };
+        int skip = 0; for (int i = 0; SKIP[i]; i++) if (strstr(nm, SKIP[i])) skip = 1;
+        if (!skip) snprintf(names[n++], 64, "%s", nm);
+    }
+    djson_free(r); return n;
+}
 
 /* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
 typedef struct { char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; int has_remote; } snap_t;
@@ -251,6 +283,15 @@ static void *worker(void *arg) {
         snprintf(url, sizeof url, "%s/%s:generateContent", d->url_base, d->model);
         pthread_mutex_unlock(&d->mu);
 
+        if (mode == 4) {                                   /* refresh the list of models the key can use */
+            char ub[160], ek[128]; snprintf(ub, sizeof ub, "%s", d->url_base); snprintf(ek, sizeof ek, "%s", d->key); pthread_mutex_unlock(&d->mu);
+            char lu[220]; snprintf(lu, sizeof lu, "%s?pageSize=200", ub);
+            char *mr = malloc(400000); char (*mn)[64] = malloc(40 * 64); int code = mr && mn ? d->io->http_post(lu, ek, NULL, 0, mr, 400000, 20) : 0, nm = code == 200 ? models_parse(mr, mn, 40) : 0;
+            pthread_mutex_lock(&d->mu);
+            if (nm > 0) { for (int i = 0; i < nm; i++) snprintf(d->models[i], 64, "%s", mn[i]); d->nmodels = nm; snprintf(d->models_msg, sizeof d->models_msg, "%d models available", nm); }
+            else snprintf(d->models_msg, sizeof d->models_msg, code == 0 ? "could not reach the API" : code == 200 ? "no usable models in the reply" : "model list refused (HTTP %d)", code);
+            free(mr); free(mn); d->rev++; continue;
+        }
         if (mode == 2 || mode == 3) {
             snap_t sn; memset(&sn, 0, sizeof sn);
             sn.channel = ch_snap; snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
@@ -376,6 +417,7 @@ static void *create(const char *data_dir) {
     snprintf(d->status, sizeof d->status, "READY"); 
     d->midi = d->io->midi_open("Daemon", "MIDI Out");
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
+    if (d->key[0] && !getenv("DAEMON_NO_MODEL_REFRESH")) { pthread_mutex_lock(&d->mu); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); pthread_mutex_unlock(&d->mu); }
     kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
     d->kbd = kbd_start(d->input_dir, d->input_test, cb);
     { char lp[300]; snprintf(lp, sizeof lp, "%s/kbd.log", d->dir); remove(lp); kbd_set_log(d->kbd, lp); snprintf(lp, sizeof lp, "%s/agent.log", d->dir); remove(lp); }
@@ -497,6 +539,20 @@ static void set_param(void *inst, const char *k, const char *v) {
         }
     } else if (!strcmp(k, "save") && on) {
         if (save_mid(d) == 0) { set_status(d, d->state, "SAVED %s", d->part.clip_name); } else set_status(d, S_ERROR, "ERROR %s", "nothing to save");
+    } else if ((!strcmp(k, "model_next") || !strcmp(k, "model_prev")) && on) {      /* choose another model: saved to daemon.conf, used from the next request */
+        if (d->nmodels > 0) {
+            int cur = -1; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], d->model)) cur = i;
+            int nx = cur < 0 ? 0 : (cur + (!strcmp(k, "model_next") ? 1 : d->nmodels - 1)) % d->nmodels;
+            snprintf(d->model, sizeof d->model, "%s", d->models[nx]);
+            if (conf_set(d->dir, "model", d->model) != 0) snprintf(d->models_msg, sizeof d->models_msg, "could not save daemon.conf");
+            else snprintf(d->models_msg, sizeof d->models_msg, "model saved to daemon.conf");
+        } else snprintf(d->models_msg, sizeof d->models_msg, "no model list yet: press REFRESH");
+        d->rev++;
+    } else if (!strcmp(k, "models_refresh") && on) {
+        if (!d->key[0]) snprintf(d->models_msg, sizeof d->models_msg, "no api_key in daemon.conf");
+        else if (d->state == S_THINKING) snprintf(d->models_msg, sizeof d->models_msg, "busy: try again in a moment");
+        else { snprintf(d->models_msg, sizeof d->models_msg, "asking the API..."); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); }
+        d->rev++;
     } else if (!strcmp(k, "prompt")) { snprintf(d->typed, sizeof d->typed, "%s", v); d->have_audio = d->have_audio && !d->typed[0]; if (d->typed[0]) request(d, 0); }
     else if (!strcmp(k, "type")) d->type = opt_index(TYPES, N(TYPES), v);
     else if (!strcmp(k, "key")) d->keyi = opt_index(KEYS, N(KEYS), v);
@@ -529,6 +585,13 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
     else if (!strcmp(k, "kb")) r = snprintf(b, n, "%d", d->kb);
     else if (!strcmp(k, "addins")) { char t[200]; snprintf(t, sizeof t, "%s%s%s", d->has_cmdr && d->has_remote ? "add-ins OK" : !d->has_cmdr && !d->has_remote ? "add-ins MISSING (plugin and screen tools off)" : !d->has_cmdr ? "commander MISSING (plugin tools off)" : "remote MISSING (screen tools off)", "  |  ", d->has_tap ? "mic tap live" : "mic tap not heard"); r = put_text(b, n, t); }
+    else if (!strcmp(k, "keyinfo")) { size_t kl = strlen(d->key); char t[200];
+        if (!kl) snprintf(t, sizeof t, "NOT SET: put api_key=YOUR_KEY in engine/daemon.conf"); else snprintf(t, sizeof t, "set (ends %s, %zu chars): from engine/daemon.conf", d->key + (kl > 4 ? kl - 4 : 0), kl);
+        r = put_text(b, n, t); }
+    else if (!strcmp(k, "model")) { int cur = 0; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], d->model)) cur = i + 1;
+        char t[120]; if (cur) snprintf(t, sizeof t, "%s  (%d of %d)", d->model, cur, d->nmodels); else snprintf(t, sizeof t, "%s%s", d->model, d->nmodels ? "  (not in the list)" : ""); r = put_text(b, n, t); }
+    else if (!strcmp(k, "models_info")) r = put_text(b, n, d->models_msg[0] ? d->models_msg : "press REFRESH to list the models your key can use");
+    else if (!strcmp(k, "mic")) r = snprintf(b, n, "%s", d->has_tap ? "on" : "off");
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */

@@ -38,7 +38,7 @@ static const char *OK_REPLY = "{\"candidates\":[{\"content\":{\"parts\":[{\"text
     "{\\\"pitch\\\":48,\\\"start_time\\\":2,\\\"duration\\\":1,\\\"velocity\\\":95}],\\\"feedback\\\":{\\\"result\\\":\\\"Dark and slow.\\\",\\\"clip_name\\\":\\\"dark_bass\\\"}}\"}]}}]}";
 
 int main(void) {
-    setenv("DAEMON_NO_DEBOUNCE", "1", 1);
+    setenv("DAEMON_NO_DEBOUNCE", "1", 1); setenv("DAEMON_NO_MODEL_REFRESH", "1", 1);
     char tp[] = "/tmp/daemon_tap_XXXXXX"; int tf = mkstemp(tp); if (tf < 0) return 1; close(tf); setenv("DAEMON_TAP_PATH", tp, 1); ring = tap_create();
     E = mpc_engine();
     char dir[] = "/tmp/daemon_eng_XXXXXX"; if (!mkdtemp(dir)) return 1;
@@ -312,8 +312,30 @@ int main(void) {
     ppq = 0; fake.nev = 0; for (int k = 0; k < 400; k++) { E->song_pos(a, ppq, 100, 1, 128); ppq += ppb; }
     CHECK(fake.nev > 0, "the earlier part still plays after a failed request");
 
+    /* settings page: the key is shown masked, the model list comes from the API, a chosen model is saved to daemon.conf */
+    { char md[] = "/tmp/daemon_mod_XXXXXX"; if (!mkdtemp(md)) return 1;
+      char mp2[340]; snprintf(mp2, sizeof mp2, "%s/daemon.conf", md); FILE *mf = fopen(mp2, "w"); fputs("api_key=ABCDEFGH1234\nmodel=gem-b\nurl_base=http://x/models\nclips_dir=/tmp\n", mf); fclose(mf);
+      fake.code = 200; snprintf(fake.resp, sizeof fake.resp, "{\"models\":[{\"name\":\"models/gem-a\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/gemini-x\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/gemini-x-image\",\"supportedGenerationMethods\":[\"generateContent\"]},{\"name\":\"models/gemini-emb\",\"supportedGenerationMethods\":[\"embedContent\"]},{\"name\":\"models/gemini-y\",\"supportedGenerationMethods\":[\"generateContent\",\"countTokens\"]}]}");
+      void *m = E->create(md);
+      CHECK(strstr(get(m, "keyinfo"), "ends 1234") && !strstr(get(m, "keyinfo"), "ABCDEFGH"), "key shown masked: '%s'", get(m, "keyinfo"));
+      CHECK(strstr(get(m, "models_info"), "REFRESH"), "no list yet: '%s'", get(m, "models_info"));
+      int p0 = fake.posts; E->set_param(m, "models_refresh", "1");
+      for (int i = 0; i < 300 && !strstr(get(m, "models_info"), "models available"); i++) usleep(10000);
+      CHECK(fake.posts == p0 + 1 && !strncmp(fake.url, "http://x/models?pageSize=200", 28) && !strcmp(fake.key, "ABCDEFGH1234"), "one GET of the list: %s", fake.url);
+      CHECK(!strcmp(get(m, "models_info"), "2 models available"), "image and embedding models left out: '%s'", get(m, "models_info"));
+      CHECK(!strcmp(get(m, "model"), "gem-b  (not in the list)") || strstr(get(m, "model"), "gem-b"), "current model shown: '%s'", get(m, "model"));
+      E->set_param(m, "model_next", "1"); CHECK(!strncmp(get(m, "model"), "gemini-x  (1 of 2)", 18), "next model: '%s'", get(m, "model"));
+      E->set_param(m, "model_next", "1"); E->set_param(m, "model_next", "1"); CHECK(!strncmp(get(m, "model"), "gemini-x  (1 of 2)", 18), "wraps: '%s'", get(m, "model"));
+      E->set_param(m, "model_prev", "1"); CHECK(!strncmp(get(m, "model"), "gemini-y  (2 of 2)", 18), "previous wraps: '%s'", get(m, "model"));
+      { char cc[2000] = ""; FILE *cf3 = fopen(mp2, "r"); size_t nn = fread(cc, 1, sizeof cc - 1, cf3); cc[nn] = 0; fclose(cf3);
+        CHECK(strstr(cc, "model=gemini-y\n") && strstr(cc, "api_key=ABCDEFGH1234\n") && strstr(cc, "url_base=http://x/models\n") && !strstr(cc, "gem-b"), "choice saved, rest of daemon.conf kept: %s", cc); }
+      fake.code = 503; E->set_param(m, "models_refresh", "1");
+      for (int i = 0; i < 300 && !strstr(get(m, "models_info"), "refused"); i++) usleep(10000);
+      CHECK(strstr(get(m, "models_info"), "HTTP 503") && !strcmp(get(m, "model") + 0, get(m, "model")), "a failed refresh says so: '%s'", get(m, "models_info"));
+      E->destroy(m); }
+
     E->destroy(a);
-    CHECK(fake.closed == 11, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 12, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

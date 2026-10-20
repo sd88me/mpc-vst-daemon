@@ -15,6 +15,7 @@ static const char *GOOD =
  "{\"version\":1,\"screen\":[1280,800],\"macros\":{"
  "\"select_track\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16}},\"steps\":[{\"press\":\"MENU\"},{\"wait\":10},{\"tap\":[\"100 + 140*(track-1)\",300],\"require_change\":true,\"label\":\"track cell\"}]},"
  "\"load_efx\":{\"params\":{\"track\":{\"type\":\"int\",\"min\":1,\"max\":16},\"plugin\":{\"type\":\"string\"}},\"steps\":[{\"call\":\"select_track\"},{\"tap\":[640,400]},{\"scroll\":[300,400],\"direction\":\"down\",\"amount\":2},{\"find_tap\":\"{plugin}\",\"hint\":\"the plugin list\"},{\"wait_stable\":500}]},"
+ "\"pick2\":{\"params\":{\"folder\":{\"type\":\"string\",\"optional\":true}},\"steps\":[{\"find_tap\":\"{folder}\",\"if_param\":\"folder\"},{\"find_tap\":\"Ghost\",\"unless_param\":\"folder\"}]},"
  "\"pick\":{\"params\":{\"preset\":{\"type\":\"string\"},\"folder\":{\"type\":\"string\",\"optional\":true}},\"steps\":[{\"find_tap\":\"{folder}\",\"if_param\":\"folder\"},{\"find_tap\":\"{preset}\"}]},"
  "\"stale\":{\"steps\":[{\"tap\":[50,750],\"require_change\":true}]},"
  "\"offscreen\":{\"steps\":[{\"tap\":[2000,10]}]},"
@@ -71,6 +72,8 @@ int main(void) {
     CHECK(macro_run(m, mcp, "load_efx", "{\"track\":2}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "missing parameter plugin"), "no plugin: %s", res);
     CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\"}", vision_ok, NULL, res, sizeof res) == 0, "optional folder left out: %s", res);
     CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\",\"folder\":\"\"}", vision_ok, NULL, res, sizeof res) == 0, "empty folder skips the step: %s", res);
+    CHECK(macro_run(m, mcp, "pick2", "{\"folder\":\"9W9\"}", vision_ok, NULL, res, sizeof res) == 0, "unless_param skips the step when the parameter is given: %s", res);
+    CHECK(macro_run(m, mcp, "pick2", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "Ghost"), "unless_param runs the step when it is not: %s", res);
     CHECK(macro_run(m, mcp, "pick", "{\"preset\":\"9W9\",\"folder\":\"Ghost\"}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "no Ghost"), "a given folder is looked for: %s", res);
     CHECK(macro_run(m, mcp, "stale", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "did not change"), "stale coordinate: %s", res);
     CHECK(macro_run(m, mcp, "offscreen", "{}", vision_ok, NULL, res, sizeof res) == -1 && strstr(res, "off the 1280x800 screen"), "off screen: %s", res);

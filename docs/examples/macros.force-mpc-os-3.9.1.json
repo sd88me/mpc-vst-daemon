@@ -345,6 +345,10 @@
     },
     "plugin": {
      "type": "string"
+    },
+    "group": {
+     "type": "string",
+     "optional": true
     }
    },
    "steps": [
@@ -395,13 +399,23 @@
      "wait": 500
     },
     {
+     "find_tap": "{group}",
+     "if_param": "group",
+     "hint": "the collapsed type group header row in the plugin picker (Delay/Reverb, Dynamics, EQ/Filter, Harmonic, Modulation, Vocal, Vintage Effects or VST): tapping it expands it",
+     "label": "expand the plugin's type group"
+    },
+    {
+     "wait": 400
+    },
+    {
      "tap": [
       230,
       676
      ],
      "skip_if": "vst_open",
      "require_change": false,
-     "label": "expand the VST group"
+     "label": "expand the VST group",
+     "unless_param": "group"
     },
     {
      "wait": 400

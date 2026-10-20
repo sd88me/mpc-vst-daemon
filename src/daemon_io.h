@@ -9,7 +9,7 @@ typedef struct {
     void *(*midi_open)(const char *client, const char *port);          /* NULL if there is no sequencer */
     void (*midi_send)(void *h, int ch, int on, int pitch, int vel);    /* ch 0-15 */
     void (*midi_close)(void *h);
-    /* POST JSON; key goes in x-goog-api-key. Returns the HTTP status (0 = no reply at all) and fills resp (NUL-terminated). */
+    /* POST JSON (a NULL body makes it a GET); key goes in x-goog-api-key. Returns the HTTP status (0 = no reply at all) and fills resp (NUL-terminated). */
     int (*http_post)(const char *url, const char *key, const char *body, size_t len, char *resp, size_t cap, int timeout_s);
     void (*midi_stat)(void *h, long *bad, int *last_rc);               /* optional: sends that failed, last return code */
 } daemon_io_t;

@@ -86,8 +86,18 @@ int main(void) {
       fputs("<PROPERTIES><KNOWNPLUGINS>\n <PLUGIN name=\"AW Reverb - Galactic3\" descriptiveName=\"x\"\n format=\"VST\" category=\"Reverb\" isInstrument=\"0\" numInputs=\"2\"/>\n"
             " <PLUGIN name=\"Drum &amp; Bass\" format=\"VST\" category=\"Instrument\" isInstrument=\"1\"/>\n <PLUGIN name=\"Stock FX\" format=\"AU\" category=\"Effect\" isInstrument=\"0\"/>\n</KNOWNPLUGINS></PROPERTIES>", sf); fclose(sf);
       setenv("DAEMON_MPC_SETTINGS", "/tmp/daemon_mpc_settings_test.xml", 1);
-      CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "\"loaded\":[") && strstr(r, "Profit-8") && strstr(r, "\"installed_effects\":[{\"name\":\"AW Reverb - Galactic3\",\"category\":\"Reverb\"}]") && strstr(r, "\"installed_instruments\":[{\"name\":\"Drum & Bass\"") && !strstr(r, "Stock FX"), "installed plugins are listed: %s", r);
+      CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "\"loaded\":[") && strstr(r, "Profit-8") && strstr(r, "\"installed_effects\":[{\"name\":\"AW Reverb - Galactic3\",\"category\":\"Reverb\",\"group\":\"VST\"}]") && strstr(r, "\"installed_instruments\":[{\"name\":\"Drum & Bass\"") && !strstr(r, "Stock FX"), "installed plugins are listed: %s", r);
       unsetenv("DAEMON_MPC_SETTINGS"); remove("/tmp/daemon_mpc_settings_test.xml"); }
+    { char root[] = "/tmp/daemon_fac_XXXXXX"; if (!mkdtemp(root)) return 1; char cmd[900];
+      snprintf(cmd, sizeof cmd, "mkdir -p '%s/Synths/AIRMusic - MPC - AIR Chorus' '%s/Synths/AIRMusic - MPC - Solina' '%s/Synths/Third - VST - Ext' '%s/Force Documents/Plugin Presets/Insert Effects/AIR - MPC - AIR Reverb' '%s/Force Documents/Plugin Presets/Insert Effects/Akai - MPC - Delay Analog' '%s/Force Documents/Plugin Presets/Instruments/AIR - MPC - Hype'", root, root, root, root, root, root);
+      if (system(cmd) != 0) return 1;
+      char sp[300]; snprintf(sp, sizeof sp, "%s/MPC.settings", root); FILE *sf = fopen(sp, "w");
+      fprintf(sf, "<PROPERTIES><KNOWNPLUGINS>\n <PLUGIN name=\"Ext Verb\" format=\"VST\" category=\"Effect\" file=\"%s/Synths/Third - VST - Ext/e.so\" isInstrument=\"0\"/>\n</KNOWNPLUGINS></PROPERTIES>", root); fclose(sf);
+      setenv("DAEMON_MPC_SETTINGS", sp, 1);
+      CHECK(agent_exec(c, &(acall_t){ "list_plugins", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0, "list with factory plugins: %s", r);
+      CHECK(strstr(r, "{\"name\":\"Ext Verb\",\"category\":\"Effect\",\"group\":\"VST\"}") && strstr(r, "{\"name\":\"AIR Reverb\",\"category\":\"Effect\",\"group\":\"Delay/Reverb\",\"factory\":true}") && strstr(r, "\"name\":\"Delay Analog\"") && strstr(r, "\"group\":\"Modulation\",\"factory\":true}"), "factory effects with their picker groups: %s", r);
+      CHECK(strstr(r, "\"installed_instruments\":[") && strstr(strstr(r, "installed_instruments"), "\"name\":\"Solina\"") && strstr(strstr(r, "installed_instruments"), "\"name\":\"Hype\"") && !strstr(strstr(r, "installed_instruments"), "AIR Chorus"), "factory instruments are listed apart: %s", r);
+      snprintf(cmd, sizeof cmd, "rm -rf '%s'", root); if (system(cmd)) {} unsetenv("DAEMON_MPC_SETTINGS"); }
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":5}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "Cutoff"), "get_plugin_params: %.80s", r);
     CHECK(agent_exec(c, &(acall_t){ "get_plugin_params", "{\"id\":77}" }, play_cb, ui_cb, NULL, r, sizeof r) == -1 && strstr(r, "error"), "unknown plugin: %s", r);
     CHECK(agent_exec(c, &(acall_t){ "get_project", "{}" }, play_cb, ui_cb, NULL, r, sizeof r) == 0 && strstr(r, "F Minor"), "get_project: %.80s", r);
