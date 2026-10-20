@@ -14,6 +14,7 @@
 #include "daemon_json.h"
 #include "daemon_macro.h"
 #include "daemon_tap.h"
+#include <glob.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -184,15 +185,34 @@ static void macros_refresh(dm_t *d) {
 
 static void publish_error(dm_t *d, const char *fmt, const char *a) { pthread_mutex_lock(&d->mu); set_status(d, S_ERROR, fmt, a); pthread_mutex_unlock(&d->mu); }
 
+
+/* MPC writes the open project's path to CurrentProject next to MPC.settings (empty for a new, never-saved project). The commander
+ * reads the newest saved project, so when the two differ the agent's picture of the tracks is stale. 1 = they agree (or we can't tell). */
+static int project_is_current(cmdr_t *c) {
+    glob_t g; char cur[512] = ""; int found = 0;
+    const char *ov = getenv("DAEMON_CURRENT_PROJECT_FILE"); char path[512] = "";
+    if (ov) snprintf(path, sizeof path, "%s", ov);
+    else if (glob("/media/*/Settings/MPC/CurrentProject", 0, NULL, &g) == 0) { if (g.gl_pathc) snprintf(path, sizeof path, "%s", g.gl_pathv[0]); globfree(&g); }
+    if (!path[0]) return 1;
+    FILE *f = fopen(path, "r"); if (!f) return 1;
+    char line[600]; while (fgets(line, sizeof line, f)) { static const char pat[] = "name=\"lastProjectPath\" val=\""; char *p = strstr(line, pat); if (p) { p += sizeof pat - 1; char *e = strchr(p, '"'); if (e) { *e = 0; snprintf(cur, sizeof cur, "%s", p); found = 1; } } }
+    fclose(f);
+    if (!found) return 1;
+    if (!cur[0]) return 0;                                  /* a new project that was never saved */
+    char *pj = malloc(60000); int ok = 1;
+    if (pj && cmdr_project(c, pj, 60000) > 0) { jv *r = djson_parse(pj, strlen(pj)); const char *pp = r ? djson_str(r, "path", "") : ""; if (pp[0] && strcmp(pp, cur)) ok = 0; djson_free(r); }
+    free(pj); return ok;
+}
 static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
     macros_refresh(d);
     char err[100] = ""; cmdr_t *c = cmdr_open(s->host, s->port, err, sizeof err);     /* NULL: planning still works for parts; tools say why */
     ahist_t h; agent_hist_init(&h);
     char ut[700]; snprintf(ut, sizeof ut, "%s", s->typed[0] ? s->typed : "The request is in the audio. Begin your final text with: Heard: \"...\" and then what the user said.");
     agent_hist_user(&h, ut, s->audio ? s->wav : NULL, s->audio ? (size_t)s->wl : 0);
-    char note[300] = "";   /* what the add-in probe saw: tell the model what it can't use, so it says so instead of planning it */
+    char note[900] = "";   /* what the add-in probe saw: tell the model what it can't use, so it says so instead of planning it */
     if (!c) snprintf(note, sizeof note, "The commander addin is not reachable, so project and plugin tools will fail; say so. ");
     if (!s->has_remote) { size_t l = strlen(note); snprintf(note + l, sizeof note - l, "The remote addin is not reachable, so there are no screen tools (select a track, load a plugin or instrument, import a clip); say so if asked for one."); }
+    if (c && !project_is_current(c)) { size_t l = strlen(note); snprintf(note + l, sizeof note - l, "WARNING: the project open on the MPC is not the one get_project shows (it is new or unsaved), so get_project's tracks and numbers are out of date. Do not plan any step that needs a track number (select_track, add_track, load_efx, load_instrument, load_preset, import_clip); make the part if asked, and tell the musician to save the project on the MPC first, then ask again. "); }
     int ui = (macros_has(d->macros, "select_track") ? 1 : 0) | (macros_has(d->macros, "load_efx") ? 2 : 0) | (macros_has(d->macros, "import_clip") ? 4 : 0) | (macros_has(d->macros, "load_instrument") ? 8 : 0) | (macros_has(d->macros, "load_preset") ? 16 : 0) | (macros_has(d->macros, "add_track") ? 32 : 0);
     actx_t ctx = { s->bpm, s->scale, s->bars, note, s->has_remote ? ui : 0, s->channel };
     uictx uc = { d, s, NULL };

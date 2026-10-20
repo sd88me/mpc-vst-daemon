@@ -157,7 +157,10 @@ int main(void) {
             "{\"functionCall\":{\"name\":\"set_param\",\"args\":{\"id\":5,\"index\":0,\"value\":0.35}}},"
             "{\"functionCall\":{\"name\":\"play_part\",\"args\":{\"name\":\"fat bass\",\"channel\":4,\"notes\":[{\"pitch\":36,\"start_time\":0,\"duration\":0.5,\"velocity\":100},{\"pitch\":39,\"start_time\":1,\"duration\":0.5,\"velocity\":90}]}}}]}}]}");
         int pp = fake.posts;
+        { FILE *cpf = fopen("/tmp/daemon_curproj_test", "w"); fputs("<PROPERTIES>\n  <VALUE name=\"lastProjectPath\" val=\"\"/>\n</PROPERTIES>\n", cpf); fclose(cpf); setenv("DAEMON_CURRENT_PROJECT_FILE", "/tmp/daemon_curproj_test", 1); }
         E->set_param(g, "prompt", "warm it up and add a bass"); wait_not_thinking(g);
+        CHECK(strstr(fake.body, "is not the one get_project shows"), "an unsaved open project is flagged to the model");
+        unsetenv("DAEMON_CURRENT_PROJECT_FILE"); remove("/tmp/daemon_curproj_test");
         CHECK(!strcmp(get(g, "status"), "PLAN 2 STEPS: press RUN"), "plan status '%s'", get(g, "status"));
         CHECK(fake.posts == pp + 2, "two model rounds (%d)", fake.posts - pp);
         CHECK(strstr(fake.body, "functionResponse") && strstr(fake.body, "Profit-8") && strstr(fake.body, "S1"), "second request carries the tool result and the echoed turn: %.150s", fake.body);

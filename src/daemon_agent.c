@@ -85,7 +85,7 @@ static const char *TOOL_ADD =
 static const char *TOOLS_END = "]}]";
 
 int agent_build_request(const actx_t *ctx, const ahist_t *h, char *buf, size_t cap) {
-    char sys[6600];
+    char sys[8000];
     snprintf(sys, sizeof sys,
         "You help a musician run an Akai MPC by voice or text. You can read the project and plugins, set plugin parameters, press transport buttons and make MIDI parts, all through the tools. "
         "Look first when you need facts (get_project, list_plugins, get_plugin_params), then ask for every change in one go: the changes are shown to the user as a plan and only run when they press RUN, so do not ask them to confirm in words. "
