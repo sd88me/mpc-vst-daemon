@@ -613,6 +613,17 @@
      "wait_stable": 1500
     },
     {
+     "tap": [
+      54,
+      54
+     ],
+     "require_change": false,
+     "label": "back arrow: the list opens inside the current preset's folder, so go up to the top (at the top there is no arrow and nothing happens)"
+    },
+    {
+     "wait": 600
+    },
+    {
      "find_tap": "{folder}",
      "if_param": "folder",
      "hint": "a folder row in the preset list (a row with an arrow at its right end) named like this",

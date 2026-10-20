@@ -214,6 +214,7 @@ static void agent_run(dm_t *d, const snap_t *s) {
         if (agent_exec(c, &plan.calls[i], play_part_cb, ui_cb, &uc, res, 8000) == 0) { ok++; if (!strcmp(plan.calls[i].name, "add_track") || !strcmp(plan.calls[i].name, "load_instrument") || !strcmp(plan.calls[i].name, "load_efx")) structural = 1; }
         else {
             if (!first_err[0]) snprintf(first_err, sizeof first_err, "%.50s: %.40s", plan.calls[i].name, res);
+            { char lp[300]; snprintf(lp, sizeof lp, "%s/agent.log", d->dir); FILE *lf = fopen(lp, "a"); if (lf) { fprintf(lf, "RUN FAILED %s %.200s -> %.400s\n", plan.calls[i].name, plan.calls[i].args, res); fclose(lf); } }
             if (agent_tool_is_ui(plan.calls[i].name)) break;       /* the screen is in an unknown state: do not go on */
         }
     }
