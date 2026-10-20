@@ -70,3 +70,8 @@ Typed prompt (remote virtual keyboard) -> agent plan (make part + clip into trac
 - Deployed: `daemon.so` md5 d42147487adaeaa6d9225cca96c5c616 and `engine/macros.json` (prior `macros.json.bak2`). The new `.so` loads on project reload.
 - To test next: reload the project, open Daemon, AGENT on, prompt "load the Rich Strings preset from the Modern folder on track 4" (track 4 = Solina, unsaved, a reload removes it, so re-add Solina first), press RUN, check `engine/agent.log`/`daemon.log`.
 - Still open: A/B audition and prompt recipes, GitHub draft release (confirm the name "Daemon", ask before publishing; no Gen2 test, bench or trademark check), keyboard responsiveness (120 ms same-key debounce) if reported.
+
+## 2026-10-20: load_preset checked by hand, agent path blocked by an unsaved project
+- Followed the `load_preset` steps by hand with the MCP tools (macro_run has no vision, so `find_tap` cannot run there): Mixer, EFFECTS tab, double tap track 4's title (560,40), double tap PRESET (940,598), folder Modern, row Rich Strings. Solina went from "Back To The 80s" to "Rich Strings" and the X (1152,86) closed Track Settings. The coordinates and list layout in the macro are right.
+- Opening Daemon's editor: MENU (press ~300 ms) > MAIN MODE > the pencil icon at (1222,470) beside the plugin name. Mixer/Matrix taps do not open it.
+- Agent path **not** verified: the prompt "load the Rich Strings preset from the Modern folder on track 4" got "Track 4 is a submix track..." because `get_project` reads the last-saved project on disk (`Mlo.xpj`), not the open "untitled" one. Save the open project first, then retry; the commander cannot see unsaved tracks.
