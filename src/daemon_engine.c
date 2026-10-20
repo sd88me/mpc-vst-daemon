@@ -284,14 +284,13 @@ static void *worker(void *arg) {
         char typed[256]; snprintf(typed, sizeof typed, "%s", d->typed); int ch_snap = d->channel;
         int audio = d->with_audio && d->have_audio, wl = 0;
         if (audio) wl = daemon_cap_wav(&d->cap, wav, 44 + DAEMON_CAP_MAX * 2);
-        char key[128], url[300]; snprintf(key, sizeof key, "%s", d->key);
+        char key[128], url[300], ub[160]; snprintf(key, sizeof key, "%s", d->key); snprintf(ub, sizeof ub, "%s", d->url_base);
         snprintf(url, sizeof url, "%s/%s:generateContent", d->url_base, d->model);
         pthread_mutex_unlock(&d->mu);
 
         if (mode == 4) {                                   /* refresh the list of models the key can use */
-            char ub[160], ek[128]; snprintf(ub, sizeof ub, "%s", d->url_base); snprintf(ek, sizeof ek, "%s", d->key); pthread_mutex_unlock(&d->mu);
-            char lu[220]; snprintf(lu, sizeof lu, "%s?pageSize=200", ub);
-            char *mr = malloc(400000); char (*mn)[64] = malloc(40 * 64); int code = mr && mn ? d->io->http_post(lu, ek, NULL, 0, mr, 400000, 20) : 0, nm = code == 200 ? models_parse(mr, mn, 40) : 0;
+            char lu[220]; snprintf(lu, sizeof lu, "%s?pageSize=200", ub);   /* ub was copied under the mutex, which is released here */
+            char *mr = malloc(400000); char (*mn)[64] = malloc(40 * 64); int code = mr && mn ? d->io->http_post(lu, key, NULL, 0, mr, 400000, 20) : 0, nm = code == 200 ? models_parse(mr, mn, 40) : 0;
             pthread_mutex_lock(&d->mu);
             if (nm > 0) { for (int i = 0; i < nm; i++) snprintf(d->models[i], 64, "%s", mn[i]); d->nmodels = nm; snprintf(d->models_msg, sizeof d->models_msg, "%d models available", nm); }
             else snprintf(d->models_msg, sizeof d->models_msg, code == 0 ? "could not reach the API" : code == 200 ? "no usable models in the reply" : "model list refused (HTTP %d)", code);
