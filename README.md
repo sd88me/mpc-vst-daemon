@@ -60,7 +60,7 @@ Daemon has two tabs at the bottom of its screen: **DAEMON** and **SETTINGS**.
 | **STATUS** | what Daemon is doing: READY, TYPING, LISTENING, THINKING, PLAN *n* STEPS, RUNNING, RAN *n* STEPS, or an ERROR with the reason |
 | **YOU** | what you typed or said |
 | **DAEMON** | Daemon's answer: a short description of the part or the plan, or a reply when there is nothing to do |
-| **PLAN** | the numbered steps Agent mode will carry out when you press RUN |
+| **PLAN** | the numbered steps Agent mode will carry out when you press RUN, one per line (up to four lines; a longer plan says how many more) |
 | **Face** (top right) | Daemon's mood at a glance: idle, listening, thinking, done, typing, or error (the crossed-out eyes) |
 | **Add-ins line** (top right) | whether the two helper add-ins are reachable (see [Requirements](#requirements)) |
 
@@ -81,7 +81,7 @@ Your words win over the menus. "In E phrygian" or "16 bars" overrides KEY, SCALE
 | **[TALK]** | tap, speak, tap again to send. Greyed out while the Daemon Listen effect isn't detected; tapping it then tells you what is missing |
 | **[TYPE]** | type with a USB or Bluetooth keyboard. **Enter** sends, **Esc** cancels. Wait for "TYPING: Enter sends" before you start |
 | **[KEYS]** | an on-screen keyboard, no hardware needed: **SEND** asks, **BACK** deletes, **CLEAR** empties, **HIDE** closes |
-| **[RUN]** | carries out the plan shown under PLAN (twice for plans flagged as replacing something) |
+| **[RUN]** | carries out the plan shown under PLAN (twice for plans flagged as replacing something). Greyed out until there is a plan ready to run |
 | **CONTROL MPC** | the agent switch. Off: every request makes a part. On: requests can also change your session (tracks, plugins, effects, presets, parameters, clips) |
 | **[REGEN]** | another take of the last request |
 | **LOOP PART** | on: the current part loops in time with MPC through Daemon's MIDI port. Off: it stays silent (SAVE and clips still work) |

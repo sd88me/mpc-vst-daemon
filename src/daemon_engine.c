@@ -248,7 +248,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         for (int i = 0, k = 0; i < t.n; i++) if (!agent_tool_is_read_only(t.calls[i].name)) {
             char line[140]; agent_describe(c, &t.calls[i], line, sizeof line);
             char why[80]; if (agent_risk(c, &t.calls[i], why, sizeof why)) { risky = 1; size_t ll = strlen(line); snprintf(line + ll, sizeof line - ll, " [%s]", why); }
-            size_t l = strlen(steps); k++; snprintf(steps + l, sizeof steps - l, "%s%d %s", k > 1 ? "   " : "", k, line);
+            size_t l = strlen(steps); k++; snprintf(steps + l, sizeof steps - l, "%s%d %s", k > 1 ? "\n" : "", k, line);   /* one step per line: plan1..plan4 */
         }
         pthread_mutex_lock(&d->mu);
         agent_turn_free(&d->plan); memcpy(&d->plan, &t, sizeof t); d->plan_ok = 1; d->plan_risky = risky; d->plan_confirmed = 0;      /* the plan owns the turn now */
@@ -472,6 +472,17 @@ static int put_text(char *b, int n, const char *s) {
     return snprintf(b, (size_t)n, "%.*s...", cap - 4, s);
 }
 
+/* line i of the plan (steps are '\n' separated); the last line also counts the steps that do not fit */
+static int plan_line(const char *s, int i, char *b, int n) {
+    int total = *s ? 1 : 0; for (const char *p = s; *p; p++) total += *p == '\n';
+    if (i >= total) return snprintf(b, (size_t)n, "%s", i ? "" : "-");
+    const char *p = s; for (int k = 0; k < i; k++) p = strchr(p, '\n') + 1;
+    char t[200]; size_t l = strcspn(p, "\n"); if (l > 150) l = 150;
+    if (i == 3 && total > 4) snprintf(t, sizeof t, "%.*s   (+%d more)", (int)(l > 100 ? 100 : l), p, total - 4);
+    else snprintf(t, sizeof t, "%.*s", (int)l, p);
+    return put_text(b, n, t);
+}
+
 static int opt_index(const char **list, int n, const char *v) {
     char *e; long i = strtol(v, &e, 10);
     if (e != v && *e == 0) return (int)(i < 0 ? 0 : i >= n ? n - 1 : i);
@@ -620,6 +631,8 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "mic")) r = snprintf(b, n, "%s", d->has_tap ? "on" : "off");
     else if (!strcmp(k, "micinfo")) r = put_text(b, n, d->has_tap ? "detected: TALK is ready" : "not found: insert Daemon Listen on the audio track that carries the mic");
     else if (!strcmp(k, "plan")) r = put_text(b, n, d->steps[0] ? d->steps : "-");
+    else if (!strncmp(k, "plan", 4) && k[4] >= '1' && k[4] <= '4' && !k[5]) r = plan_line(d->steps, k[4] - '1', b, n);
+    else if (!strcmp(k, "runok")) r = snprintf(b, n, "%s", d->plan_ok && d->state != S_THINKING && d->state != S_LISTENING ? "on" : "off");
     else if (!strcmp(k, "agent")) r = snprintf(b, n, "%s", d->agent ? "On" : "Off");
     else if (!strcmp(k, "face")) { static const char *F[] = { "Idle", "Listening", "Thinking", "Done", "Error", "Typing" };   /* the skin's picture per state */
         r = snprintf(b, n, "%s", F[d->state == S_READY ? 0 : d->state == S_LISTENING ? 1 : d->state == S_THINKING ? 2 : d->state == S_DONE || d->state == S_PLAN ? 3 : d->state == S_TYPING ? 5 : 4]); }

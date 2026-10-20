@@ -145,6 +145,39 @@
    "poll": false
   },
   {
+   "key": "plan1",
+   "name": "Plan 1",
+   "display": "string",
+   "poll": false
+  },
+  {
+   "key": "plan2",
+   "name": "Plan 2",
+   "display": "string",
+   "poll": false
+  },
+  {
+   "key": "plan3",
+   "name": "Plan 3",
+   "display": "string",
+   "poll": false
+  },
+  {
+   "key": "plan4",
+   "name": "Plan 4",
+   "display": "string",
+   "poll": false
+  },
+  {
+   "key": "runok",
+   "name": "Plan ready",
+   "options": [
+    "off",
+    "on"
+   ],
+   "default": "off"
+  },
+  {
    "key": "keys",
    "name": "Keys",
    "momentary": true

@@ -165,6 +165,8 @@ int main(void) {
         CHECK(fake.posts == pp + 2, "two model rounds (%d)", fake.posts - pp);
         CHECK(strstr(fake.body, "functionResponse") && strstr(fake.body, "Profit-8") && strstr(fake.body, "S1"), "second request carries the tool result and the echoed turn: %.150s", fake.body);
         CHECK(strstr(get(g, "plan"), "1 set Profit-8 Cutoff to 35%") && strstr(get(g, "plan"), "2 make a part \"fat bass\" on channel 4, 2 notes"), "plan lines '%s'", get(g, "plan"));
+        CHECK(!strcmp(get(g, "plan1"), "1 set Profit-8 Cutoff to 35%") && !strncmp(get(g, "plan2"), "2 make a part", 13) && !strcmp(get(g, "plan3"), ""), "plan rows '%s' / '%s' / '%s'", get(g, "plan1"), get(g, "plan2"), get(g, "plan3"));
+        CHECK(!strcmp(get(g, "runok"), "on"), "RUN lit with a plan: '%s'", get(g, "runok"));
         CHECK(strstr(get(g, "reply"), "Opening the filter"), "reply '%s'", get(g, "reply"));
         CHECK(!strcmp(get(g, "face"), "Done"), "plan face '%s'", get(g, "face"));
         double q2 = 0; fake.nev = 0; for (int k = 0; k < 300; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
@@ -174,7 +176,8 @@ int main(void) {
         E->set_param(g, "run", "1");
         for (int i = 0; i < 400 && strncmp(get(g, "status"), "RAN", 3); i++) usleep(10000);
         CHECK(!strcmp(get(g, "status"), "RAN 2 STEPS"), "run status '%s'", get(g, "status"));
-        CHECK(!strcmp(get(g, "plan"), "-"), "a plan that ran is cleared: '%s'", get(g, "plan"));
+        CHECK(!strcmp(get(g, "plan"), "-") && !strcmp(get(g, "plan1"), "-"), "a plan that ran is cleared: '%s'", get(g, "plan"));
+        CHECK(!strcmp(get(g, "runok"), "off"), "RUN dim after the plan ran: '%s'", get(g, "runok"));
         q2 = 0; fake.nev = 0; for (int k = 0; k < 600; k++) { E->song_pos(g, q2, 124, 1, 128); q2 += 124 / 60.0 * 128 / 44100.0; }
         int on4 = 0; for (int i = 0; i < fake.nev; i++) on4 += fake.ev[i].on && fake.ev[i].ch == 3;
         CHECK(on4 >= 2, "the part plays on channel 4 after RUN (%d note-ons)", on4);
