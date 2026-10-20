@@ -172,9 +172,9 @@ static const char *factory_group(const char *name) {
         { "Delay/Reverb", { "reverb", "delay", "echo", NULL } },
         { "Modulation", { "chorus", "flang", "phas", "tremolo", "vibrato", "modul", NULL } },
         { "Dynamics", { "compress", "expander", "limit", "gate", "trigger", NULL } },
-        { "Vintage Effects", { "vinyl", "tape", "vintage", "lo-fi", "lofi", NULL } },
+        { "Vintage Effects", { "vinyl", "tape", "vintage", NULL } },
         { "EQ/Filter", { "filter", "equal", " eq", "channel strip", NULL } },
-        { "Harmonic", { "tube", "amp sim", "drive", "distort", "satur", "exciter", NULL } },
+        { "Harmonic", { "tube", "amp sim", "drive", "distort", "satur", "exciter", "lo-fi", "lofi", "decimator", "talk box", "freq shift", "flavor", "diode", NULL } },
         { "Vocal", { "vocal", "pitch", "harmoniz", "vocoder", NULL } },
     };
     char low[120]; size_t i = 0; for (; name[i] && i < sizeof low - 1; i++) low[i] = (char)tolower((unsigned char)name[i]); low[i] = 0;
@@ -193,6 +193,16 @@ static void scan_factory(const char *dir, int force_kind, inst_ent *e, int *n, i
     }
     closedir(d);
 }
+static const struct { const char *name, *group; } FACTORY[] = {      /* the built-in effects (no folder on the drive), as the plugin picker lists them */
+    { "AIR Delay", "Delay/Reverb" }, { "AIR Diff Delay", "Delay/Reverb" }, { "AIR Multitap Delay", "Delay/Reverb" }, { "AIR Non-Lin Reverb", "Delay/Reverb" },
+    { "AIR Reverb", "Delay/Reverb" }, { "AIR Spring Reverb", "Delay/Reverb" }, { "Delay Analog Sync", "Delay/Reverb" }, { "Delay Analog", "Delay/Reverb" },
+    { "Delay HP", "Delay/Reverb" }, { "Delay LP", "Delay/Reverb" }, { "Delay Mono Sync", "Delay/Reverb" }, { "Delay Mono", "Delay/Reverb" },
+    { "Delay Multi-Tap", "Delay/Reverb" }, { "Delay Ping Pong", "Delay/Reverb" }, { "Delay Stereo", "Delay/Reverb" }, { "Delay Sync", "Delay/Reverb" },
+    { "Delay Tape Sync", "Delay/Reverb" }, { "Reverb In Gate", "Delay/Reverb" }, { "Reverb Large 2", "Delay/Reverb" }, { "Reverb Large", "Delay/Reverb" },
+    { "Reverb Medium", "Delay/Reverb" }, { "Reverb Out Gate", "Delay/Reverb" }, { "Reverb Small", "Delay/Reverb" }, { "Sample Delay", "Delay/Reverb" },
+    { "AIR Amp Sim", "Harmonic" }, { "AIR Diode Clip", "Harmonic" }, { "AIR Distortion", "Harmonic" }, { "AIR Flavor", "Harmonic" }, { "AIR Freq Shift", "Harmonic" },
+    { "AIR Lo-Fi", "Harmonic" }, { "AIR Talk Box", "Harmonic" }, { "AIR Tube Drive", "Harmonic" }, { "Decimator", "Harmonic" }, { "Distortion Amp", "Harmonic" },
+    { "Distortion Custom", "Harmonic" } };
 static int installed_plugins(char *out, size_t cap) {
     const char *path = getenv("DAEMON_MPC_SETTINGS"); glob_t g; char found[512] = "";
     if (path) snprintf(found, sizeof found, "%s", path);
@@ -214,6 +224,9 @@ static int installed_plugins(char *out, size_t cap) {
         if (!x->inst) snprintf(x->group, sizeof x->group, "VST");
     }
     free(buf);
+    for (size_t i = 0; i < sizeof FACTORY / sizeof *FACTORY && ne < MAXE; i++) if (!ent_has(E, ne, FACTORY[i].name)) {
+        inst_ent *x = &E[ne++]; memset(x, 0, sizeof *x); snprintf(x->name, sizeof x->name, "%s", FACTORY[i].name); snprintf(x->cat, sizeof x->cat, "Effect"); snprintf(x->group, sizeof x->group, "%s", FACTORY[i].group); x->factory = 1;
+    }
     if (synths[0]) {                                       /* the device's own plugins: folders on the drive and the preset folders */
         char root[400], pdir[520]; snprintf(root, sizeof root, "%s", synths); char *sl = strrchr(root, '/'); if (sl) *sl = 0;
         snprintf(pdir, sizeof pdir, "%s/Force Documents/Plugin Presets/Insert Effects", root); scan_factory(pdir, 0, E, &ne, MAXE);
