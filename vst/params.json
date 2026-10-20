@@ -68,7 +68,7 @@
   },
   {
    "key": "play",
-   "name": "Play",
+   "name": "Loop part",
    "options": [
     "Stop",
     "Play"
@@ -126,7 +126,7 @@
   },
   {
    "key": "agent",
-   "name": "Agent",
+   "name": "Control MPC",
    "options": [
     "Off",
     "On"

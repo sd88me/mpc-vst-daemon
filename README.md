@@ -26,7 +26,7 @@ musical and visual understanding, so the device needs a network connection and a
 - **Voice:** tap TALK and speak instead of typing (with the Daemon Listen effect on your mic track).
 
 ### Build the session around it (Agent mode)
-Switch **AGENT** on, and Daemon can work your MPC for you:
+Switch **CONTROL MPC** on (agent mode), and Daemon can work your MPC for you:
 
 | Ask for | Daemon does |
 |---|---|
@@ -82,12 +82,12 @@ Your words win over the menus. "In E phrygian" or "16 bars" overrides KEY, SCALE
 | **[TYPE]** | type with a USB or Bluetooth keyboard. **Enter** sends, **Esc** cancels. Wait for "TYPING: Enter sends" before you start |
 | **[KEYS]** | an on-screen keyboard, no hardware needed: **SEND** asks, **BACK** deletes, **CLEAR** empties, **HIDE** closes |
 | **[RUN]** | carries out the plan shown under PLAN (twice for plans flagged as replacing something) |
-| **AGENT** | off: every request makes a part. On: requests can also change your session (tracks, plugins, effects, presets, parameters, clips) |
+| **CONTROL MPC** | the agent switch. Off: every request makes a part. On: requests can also change your session (tracks, plugins, effects, presets, parameters, clips) |
 | **[REGEN]** | another take of the last request |
-| **PLAY** | loop the current part (on) or keep it silent (off) |
+| **LOOP PART** | on: the current part loops in time with MPC through Daemon's MIDI port. Off: it stays silent (SAVE and clips still work) |
 | **[SAVE]** | write the current part to `<drive>/Daemon/<name>.mid` |
 
-**Q-Links** on this tab: TALK, TYPE, RUN, AGENT, TYPE (part type), KEY, SCALE, BARS.
+**Q-Links** on this tab: TALK, TYPE, RUN, CONTROL MPC, TYPE (part type), KEY, SCALE, BARS.
 
 ### SETTINGS tab
 | | |
@@ -134,7 +134,7 @@ three times on its own.
 ## First steps
 1. Add **Daemon** as the instrument of a track and open its screen (Main mode, select its track, then the arrow next to the plugin name).
 2. Tap **[TYPE]** or **[KEYS]**, type "dark minor chords, slow" and send. The part plays at once.
-3. Switch **AGENT** on and try "put that in a clip on track 2", or "add a reverb and a delay to track 2". Read the PLAN, then press **[RUN]**.
+3. Switch **CONTROL MPC** on and try "put that in a clip on track 2", or "add a reverb and a delay to track 2". Read the PLAN, then press **[RUN]**.
 4. After a plan that adds tracks or plugins, **save the project**. The status line reminds you. The agent reads the saved project,
    so this keeps its picture of your session current.
 
