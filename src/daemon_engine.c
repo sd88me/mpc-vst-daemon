@@ -108,7 +108,7 @@ static int models_parse(const char *json, char names[][64], int max) {
         jv *meth = djson_get(m, "supportedGenerationMethods");
         for (jv *g = meth ? meth->kid : NULL; g; g = g->next) if (g->t == 's' && !strcmp(g->str, "generateContent")) gen = 1;
         if (!gen || strncmp(nm, "gemini", 6) || !nm[0] || strlen(nm) >= 64) continue;
-        static const char *SKIP[] = { "image", "tts", "embedding", "live", "audio", "robotics", "computer", "aqa", "customtools", "native", "omni", NULL };
+        static const char *SKIP[] = { "image", "tts", "embedding", "live", "audio", "robotics", "computer", "aqa", "customtools", "native", "omni", "transcribe", "translate", "banana", NULL };
         int skip = 0; for (int i = 0; SKIP[i]; i++) if (strstr(nm, SKIP[i])) skip = 1;
         if (!skip) snprintf(names[n++], 64, "%s", nm);
     }

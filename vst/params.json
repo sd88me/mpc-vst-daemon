@@ -426,19 +426,27 @@
   },
   {
    "key": "micinfo",
-   "name": "Listen effect"
+   "name": "Listen effect",
+   "display": "string",
+   "poll": false
   },
   {
    "key": "keyinfo",
-   "name": "API key"
+   "name": "API key",
+   "display": "string",
+   "poll": false
   },
   {
    "key": "model",
-   "name": "Model"
+   "name": "Model",
+   "display": "string",
+   "poll": false
   },
   {
    "key": "models_info",
-   "name": "Model list"
+   "name": "Model list",
+   "display": "string",
+   "poll": false
   },
   {
    "key": "model_prev",
