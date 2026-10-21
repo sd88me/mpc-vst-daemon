@@ -10,8 +10,19 @@ track's inserts. All of it is planned in front of you, and none of it runs until
 Daemon is a native instrument plugin that runs inside MPC OS standalone, with no computer attached. It uses Google Gemini or Anthropic Claude
 (your choice, on the SETTINGS tab) for its musical and visual understanding, so the device needs a network connection and an API key.
 
-> First public release. Developed and verified on an Akai Force with MPC OS 3.9.1. Other MPC OS standalone devices should run
-> it. The screen automations (see [Agent mode](#agent-mode)) are recorded per device; a set for the Force ships with it.
+> **Version 1.1.0.** Runs on first-generation MPCs and the Force (MPC OS 2.x and 3.x) and on second-generation MPCs (MPC OS 3.x).
+> Developed and verified on an Akai Force with MPC OS 3.9.1; the other devices and MPC OS 2.x are supported by the build but not yet
+> tested on hardware. The screen automations (see [Build the session around it](#build-the-session-around-it-agent-mode)) are recorded
+> per device; a set for the Force on MPC OS 3.9.1 ships with it.
+
+### New in 1.1.0
+- **Claude as a second AI provider.** Choose Gemini or Claude on the SETTINGS tab; each has its own key and model list.
+- **RUN is greyed out** until there is a plan ready to run.
+- **The plan shows one step per line**, so longer plans are readable (four lines, then a count of the rest).
+- **Unsaved projects are spotted.** If the open project is new or unsaved, the agent will not guess track numbers and asks you to save first.
+- **RUN is more forgiving:** a waiting plan still runs after you press other buttons, and a plan that has run is cleared.
+- **Clearer labels:** the agent switch is CONTROL MPC, the play switch is LOOP PART.
+- **MPC OS 2.x builds** for first-generation MPCs, and Gen 2 (aarch64) builds.
 
 ---
 
@@ -108,7 +119,14 @@ three times on its own.
 ---
 
 ## Requirements
-- An Akai MPC OS standalone device (Force, MPC Live / One / X / Key). armv7 builds for Gen 1 devices and the Force, aarch64 for Gen 2.
+- An Akai MPC OS standalone device:
+
+  | Device | Download | MPC OS |
+  |---|---|---|
+  | Force and first-generation MPCs (Gen 1, armv7 CPU) | `Daemon-1.1.0-mpc-armv7.zip`, `Daemon-Listen-1.1.0-mpc-armv7.zip` | 2.x and 3.x |
+  | Second-generation MPCs (Gen 2, aarch64 CPU) | `Daemon-1.1.0-mpc-aarch64.zip`, `Daemon-Listen-1.1.0-mpc-aarch64.zip` | 3.x |
+
+  Not sure which you have? Over ssh, `uname -m` prints `armv7l` on Gen 1 and `aarch64` on Gen 2. A device on MPC OS 2.x is Gen 1.
 - Network access and a **Gemini API key** (free keys work, with daily limits) or an **Anthropic API key** for Claude (voice input still needs the Gemini key).
 - For **Agent mode**, two add-ins on the device:
   - **mpc-addin-commander** (port 6730): reads the project, plugins and parameters, sets parameters and transport.
@@ -117,9 +135,11 @@ three times on its own.
 - For **voice**, the **Daemon Listen** effect (included) on the audio track that carries your mic.
 
 ## Install
-1. Install the Daemon and Daemon Listen packages for your device's CPU (the release zips), then restart MPC once so it
-   registers the new plugins.
-2. Create `engine/daemon.conf` inside Daemon's plugin folder (it survives upgrades):
+1. Download the two zips for your device from the [Releases page](https://github.com/sd88me/mpc-vst-daemon/releases). Unzip each one
+   on your computer, copy the folder to the device and run its `install.sh` as root over ssh (it stops MPC, installs the plugin, backs up MPC.settings and starts MPC
+   again). Each zip's `INSTALL.md` also explains how to install by hand.
+2. Create `engine/daemon.conf` inside Daemon's plugin folder. `engine/daemon.conf.example` shows every option, and the file is kept
+   when you upgrade:
    ```
    api_key=YOUR_GEMINI_KEY
    model=gemini-3-flash-preview     # optional: any model from the SETTINGS tab
@@ -129,6 +149,7 @@ three times on its own.
    clips_dir=Daemon                 # optional: where SAVE writes, a folder at the top of the drive
    ```
    Daemon never shows or logs the key.
+   On MPC OS 2.x the add-ins that Agent mode needs may not be available; making parts, voice, typing and saving work without them.
 3. For Agent mode, put the screen automations for your device in `engine/macros.json`. For a Force on MPC OS 3.9.1, copy
    `docs/examples/macros.force-mpc-os-3.9.1.json`. Other devices: see `docs/MACROS.md` to record your own. Without the file the agent
    simply does not offer the screen actions.

@@ -1,0 +1,10 @@
+# Copy to daemon.conf and fill in. Daemon never shows or logs the keys.
+api_key=YOUR_GEMINI_KEY
+model=gemini-3-flash-preview
+# To use Claude (Anthropic) instead: add your key and set the provider (or use [SWITCH] on the SETTINGS tab).
+# Voice (TALK) still goes to Gemini, so keep api_key if you want to talk to Daemon.
+# claude_key=YOUR_ANTHROPIC_KEY
+# claude_model=claude-sonnet-5-5
+# provider=claude
+# clips_dir=Daemon
+# For agent screen actions on a Force (MPC OS 3.9.1): copy macros.force-mpc-os-3.9.1.json to macros.json
