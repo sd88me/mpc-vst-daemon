@@ -10,19 +10,13 @@ track's inserts. All of it is planned in front of you, and none of it runs until
 Daemon is a native instrument plugin that runs inside MPC OS standalone, with no computer attached. It uses Google Gemini or Anthropic Claude
 (your choice, on the SETTINGS tab) for its musical and visual understanding, so the device needs a network connection and an API key.
 
-> **Version 1.1.0.** Runs on first-generation MPCs and the Force (MPC OS 2.x and 3.x) and on second-generation MPCs (MPC OS 3.x).
+![Daemon's main screen: a dubby chord request planned as six steps](docs/screenshots/daemon.png)
+
+> **Version 1.0.0, the first release.** Runs on first-generation MPCs and the Force (MPC OS 2.x and 3.x) and on second-generation MPCs (MPC OS 3.x).
 > Developed and verified on an Akai Force with MPC OS 3.9.1; the other devices and MPC OS 2.x are supported by the build but not yet
 > tested on hardware. The screen automations (see [Build the session around it](#build-the-session-around-it-agent-mode)) are recorded
 > per device; a set for the Force on MPC OS 3.9.1 ships with it.
 
-### New in 1.1.0
-- **Claude as a second AI provider.** Choose Gemini or Claude on the SETTINGS tab; each has its own key and model list.
-- **RUN is greyed out** until there is a plan ready to run.
-- **The plan shows one step per line**, so longer plans are readable (four lines, then a count of the rest).
-- **Unsaved projects are spotted.** If the open project is new or unsaved, the agent will not guess track numbers and asks you to save first.
-- **RUN is more forgiving:** a waiting plan still runs after you press other buttons, and a plan that has run is cleared.
-- **Clearer labels:** the agent switch is CONTROL MPC, the play switch is LOOP PART.
-- **MPC OS 2.x builds** for first-generation MPCs, and Gen 2 (aarch64) builds.
 
 ---
 
@@ -91,7 +85,7 @@ Your words win over the menus. "In E phrygian" or "16 bars" overrides KEY, SCALE
 |---|---|
 | **[TALK]** | tap, speak, tap again to send. Greyed out while the Daemon Listen effect isn't detected; tapping it then tells you what is missing |
 | **[TYPE]** | type with a USB or Bluetooth keyboard. **Enter** sends, **Esc** cancels. Wait for "TYPING: Enter sends" before you start |
-| **[KEYS]** | an on-screen keyboard, no hardware needed: **SEND** asks, **BACK** deletes, **CLEAR** empties, **HIDE** closes |
+| **[KEYB]** | an on-screen keyboard, no hardware needed: **SEND** asks, **BACK** deletes, **CLEAR** empties, **HIDE** closes |
 | **[RUN]** | carries out the plan shown under PLAN (twice for plans flagged as replacing something). Greyed out until there is a plan ready to run |
 | **CONTROL MPC** | the agent switch. Off: every request makes a part. On: requests can also change your session (tracks, plugins, effects, presets, parameters, clips) |
 | **[REGEN]** | another take of the last request |
@@ -101,6 +95,8 @@ Your words win over the menus. "In E phrygian" or "16 bars" overrides KEY, SCALE
 **Q-Links** on this tab: TALK, TYPE, RUN, CONTROL MPC, TYPE (part type), KEY, SCALE, BARS.
 
 ### SETTINGS tab
+![The SETTINGS tab: AI provider, key, model list, add-ins and voice input](docs/screenshots/settings.png)
+
 | | |
 |---|---|
 | **AI PROVIDER** / **[SWITCH]** | Gemini (Google) or Claude (Anthropic). Saved straight away; the model list follows. Claude does not take audio, so with Claude a spoken request still goes to Gemini (TALK needs `api_key` too) |
@@ -123,8 +119,8 @@ three times on its own.
 
   | Device | Download | MPC OS |
   |---|---|---|
-  | Force and first-generation MPCs (Gen 1, armv7 CPU) | `Daemon-1.1.0-mpc-armv7.zip`, `Daemon-Listen-1.1.0-mpc-armv7.zip` | 2.x and 3.x |
-  | Second-generation MPCs (Gen 2, aarch64 CPU) | `Daemon-1.1.0-mpc-aarch64.zip`, `Daemon-Listen-1.1.0-mpc-aarch64.zip` | 3.x |
+  | Force and first-generation MPCs (Gen 1, armv7 CPU) | `Daemon-1.0.0-mpc-armv7.zip`, `Daemon-Listen-1.0.0-mpc-armv7.zip` | 2.x and 3.x |
+  | Second-generation MPCs (Gen 2, aarch64 CPU) | `Daemon-1.0.0-mpc-aarch64.zip`, `Daemon-Listen-1.0.0-mpc-aarch64.zip` | 3.x |
 
   Not sure which you have? Over ssh, `uname -m` prints `armv7l` on Gen 1 and `aarch64` on Gen 2. A device on MPC OS 2.x is Gen 1.
 - Network access and a **Gemini API key** (free keys work, with daily limits) or an **Anthropic API key** for Claude (voice input still needs the Gemini key).
@@ -158,7 +154,7 @@ three times on its own.
 
 ## First steps
 1. Add **Daemon** as the instrument of a track and open its screen (Main mode, select its track, then the arrow next to the plugin name).
-2. Tap **[TYPE]** or **[KEYS]**, type "dark minor chords, slow" and send. The part plays at once.
+2. Tap **[TYPE]** or **[KEYB]**, type "dark minor chords, slow" and send. The part plays at once.
 3. Switch **CONTROL MPC** on and try "put that in a clip on track 2", or "add a reverb and a delay to track 2". Read the PLAN, then press **[RUN]**.
 4. After a plan that adds tracks or plugins, **save the project**. The status line reminds you. The agent reads the saved project,
    so this keeps its picture of your session current.
