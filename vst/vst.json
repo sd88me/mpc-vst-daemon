@@ -18,6 +18,7 @@
    "src/daemon_cmdr.c",
    "src/daemon_macro.c",
    "src/daemon_mcp.c",
+   "src/daemon_claude.c",
    "src/daemon_fp.c"
   ],
   "cflags": [

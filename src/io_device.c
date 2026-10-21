@@ -91,8 +91,10 @@ static int http_post(const char *url, const char *key, const char *body, size_t 
     int code = 0;
     if (!init || !setopt || !perform || !getinfo || !cleanup || !slist_add || !slist_free) { snprintf(resp, cap, "libcurl is missing calls"); dlclose(lib); return 0; }
     void *c = init(), *hdr = NULL;
-    char kh[200]; snprintf(kh, sizeof kh, "x-goog-api-key: %s", key);
-    hdr = slist_add(hdr, "Content-Type: application/json"); hdr = slist_add(hdr, kh);
+    char kh[400]; hdr = slist_add(hdr, "Content-Type: application/json");
+    if (strchr(key, ':')) {                          /* whole header lines, one per '\n' (Claude: x-api-key and anthropic-version) */
+        snprintf(kh, sizeof kh, "%s", key); for (char *l = strtok(kh, "\n"); l; l = strtok(NULL, "\n")) hdr = slist_add(hdr, l);
+    } else { snprintf(kh, sizeof kh, "x-goog-api-key: %s", key); hdr = slist_add(hdr, kh); }
     sink_t s = { resp, 0, cap }; if (cap) resp[0] = 0;
     setopt(c, OPT_URL, url); if (body) { setopt(c, OPT_POSTFIELDS, body); setopt(c, OPT_POSTFIELDSIZE, (long)len); }   /* no body: a GET (the model list) */
     setopt(c, OPT_HTTPHEADER, hdr); setopt(c, OPT_WRITEFUNCTION, on_data); setopt(c, OPT_WRITEDATA, &s);

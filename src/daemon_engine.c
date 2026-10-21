@@ -15,6 +15,7 @@
 #include "daemon_macro.h"
 #include "daemon_tap.h"
 #include <glob.h>
+#include "daemon_claude.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +41,7 @@ typedef struct {
     int th_up, drop_up, quit, pending, with_audio;
     const daemon_io_t *io; void *midi;
     char dir[256], clips_dir[300], key[128], model[64], url_base[160], input_dir[160]; int input_test;
+    int provider; char ckey[160], cmodel[64], curl[160];   /* provider 1: Claude (claude_key, claude_model, claude_url); 0: Gemini (api_key, model, url_base) */
     char models[40][64]; int nmodels; char models_msg[96];      /* the models the key can use (generateContent), from the API; models_msg says how the last refresh went */
     int state, rev;
     char status[96], transcript[256], reply[512];
@@ -48,7 +50,7 @@ typedef struct {
     dcap_t cap; int have_audio;
     dpart_t part; int have_part, part_gen;     /* part_gen counts replacements so the player restarts on a new part */
     dplayer_t pl; int pl_gen; double bpm;
-    kbd_t *kbd; int kbd_devs; struct timespec press_at[10];
+    kbd_t *kbd; int kbd_devs; struct timespec press_at[11];
     const tap_ring_t *tap; uint64_t tap_rpos, tap_seen; int tap_sync, tap_poll, has_tap;   /* the Daemon Listen effect's ring: attached, where we read, last position the probe saw, resync at the next block, blocks since an attach try, audio is flowing */
     int has_cmdr, has_remote;                  /* the add-ins answer on their ports (probed every ~10 s) */
     int kb; char kbuf[200]; char kb_last[8]; struct timespec kb_at;   /* the on-screen keyboard: shown, the text so far, the last key and when */
@@ -65,6 +67,7 @@ static void set_status(dm_t *d, int st, const char *fmt, const char *a) {
 static void conf_load(dm_t *d) {
     snprintf(d->model, sizeof d->model, "gemini-3.8-flash");
     snprintf(d->url_base, sizeof d->url_base, "https://generativelanguage.googleapis.com/v1beta/models");
+    snprintf(d->cmodel, sizeof d->cmodel, "claude-sonnet-5-5"); snprintf(d->curl, sizeof d->curl, "https://api.anthropic.com/v1");
     snprintf(d->input_dir, sizeof d->input_dir, "/dev/input"); snprintf(d->cmdr_host, sizeof d->cmdr_host, "127.0.0.1"); d->cmdr_port = 6730; snprintf(d->remote_host, sizeof d->remote_host, "127.0.0.1"); d->remote_port = 6720;
     char path[300]; snprintf(path, sizeof path, "%s/daemon.conf", d->dir);
     FILE *f = fopen(path, "r"); if (!f) return;
@@ -75,6 +78,10 @@ static void conf_load(dm_t *d) {
         *eq = 0; char *v = eq + 1;
         if (!strcmp(line, "api_key")) snprintf(d->key, sizeof d->key, "%s", v);
         else if (!strcmp(line, "model")) snprintf(d->model, sizeof d->model, "%s", v);
+        else if (!strcmp(line, "provider")) d->provider = !strcmp(v, "claude");
+        else if (!strcmp(line, "claude_key")) snprintf(d->ckey, sizeof d->ckey, "%s", v);
+        else if (!strcmp(line, "claude_model")) snprintf(d->cmodel, sizeof d->cmodel, "%s", v);
+        else if (!strcmp(line, "claude_url")) snprintf(d->curl, sizeof d->curl, "%s", v);   /* tests */
         else if (!strcmp(line, "input_dir")) { snprintf(d->input_dir, sizeof d->input_dir, "%s", v); d->input_test = 1; }   /* tests: a FIFO dir */
         else if (!strcmp(line, "commander")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->cmdr_host, sizeof d->cmdr_host, "%s", h); d->cmdr_port = pt; } }
         else if (!strcmp(line, "remote")) { char h[48]; int pt; if (sscanf(v, "%47[^:]:%d", h, &pt) == 2) { snprintf(d->remote_host, sizeof d->remote_host, "%s", h); d->remote_port = pt; } }
@@ -116,8 +123,38 @@ static int models_parse(const char *json, char names[][64], int max) {
     djson_free(r); return n;
 }
 
+/* the active provider's key and model, and the conf.d keys that hold them */
+#define AKEY(d) ((d)->provider ? (d)->ckey : (d)->key)
+#define AMODEL(d) ((d)->provider ? (d)->cmodel : (d)->model)
+#define AMODEL_CONF(d) ((d)->provider ? "claude_model" : "model")
+#define AKEY_CONF(d) ((d)->provider ? "claude_key" : "api_key")
+
+/* where a request goes, copied under the mutex: Claude (url, key, model) or Gemini (gurl, gkey) */
+typedef struct { int claude; char url[160], key[160], model[64], gurl[300], gkey[128]; } llm_t;
+static void llm_snap(const dm_t *d, llm_t *L) {    /* d->mu held */
+    L->claude = d->provider; snprintf(L->url, sizeof L->url, "%s", d->curl); snprintf(L->key, sizeof L->key, "%s", d->ckey); snprintf(L->model, sizeof L->model, "%s", d->cmodel);
+    snprintf(L->gurl, sizeof L->gurl, "%s/%s:generateContent", d->url_base, d->model); snprintf(L->gkey, sizeof L->gkey, "%s", d->key);
+}
+/* POST a Gemini request body to the active provider; the reply in resp is always a Gemini reply. Returns the HTTP status (0: no network). */
+static int llm_post(const daemon_io_t *io, const llm_t *L, const char *body, size_t bl, char *resp, size_t cap, int timeout_s) {
+    if (!L->claude) return io->http_post(L->gurl, L->gkey, body, bl, resp, cap, timeout_s);
+    size_t cc = bl + bl / 4 + 65536; char *cb = malloc(cc); int n = claude_request(body, L->model, cb, cc), code;
+    if (n == CLAUDE_NEEDS_AUDIO) {                     /* Claude does not take audio: a spoken request goes to Gemini */
+        free(cb);
+        if (L->gkey[0]) return io->http_post(L->gurl, L->gkey, body, bl, resp, cap, timeout_s);
+        snprintf(resp, cap, "{\"error\":{\"message\":\"voice needs api_key (Gemini): Claude does not take audio\"}}"); return 400;
+    }
+    if (n < 0) { free(cb); snprintf(resp, cap, "{\"error\":{\"message\":\"request too large\"}}"); return 400; }
+    char hdr[240], url[200]; snprintf(hdr, sizeof hdr, "x-api-key: %s\nanthropic-version: 2023-06-01", L->key); snprintf(url, sizeof url, "%s/messages", L->url);
+    char *raw = malloc(cap); code = io->http_post(url, hdr, cb, (size_t)n, raw, cap, timeout_s);
+    if (code == 0) snprintf(resp, cap, "%s", raw);
+    else if (claude_response(raw, resp, cap) < 0) snprintf(resp, cap, "{\"error\":{\"message\":\"reply too large\"}}");
+    free(cb); free(raw);
+    return code == 529 ? 503 : code;                   /* 529 overloaded: retried like Gemini's 503 */
+}
+
 /* ---- agent: plan (read-only tools run now, changes are collected) and run (the changes) ---- */
-typedef struct { char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; int has_remote; } snap_t;
+typedef struct { llm_t L; char typed[256]; int channel; int audio, wl; const uint8_t *wav; double bpm; char scale[48]; int bars; char key[128], url[300], host[48]; int port; char host_remote[48]; int port_remote; int has_remote; } snap_t;
 typedef struct { dm_t *d; const snap_t *s; mcp_t *mcp; } uictx;       /* what the tool callbacks get */
 
 static int play_part_cb(void *u, const char *args, char *res, size_t cap) {
@@ -145,7 +182,7 @@ static int vision_gemini(void *u, const char *target, const char *hint, const ch
     else {
         int code = 0;
         for (int tries = 0; tries < 3; tries++) {         /* Gemini answers 503/429 under load: try again after a pause */
-            code = d->io->http_post(c->s->url, c->s->key, body, (size_t)bl, resp, 200000, 60);
+            code = llm_post(d->io, &c->s->L, body, (size_t)bl, resp, 200000, 60);
             if (code != 503 && code != 429 && code != 500) break;
             for (int w2 = 0; w2 < 20 * (tries + 1); w2++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
         }
@@ -224,7 +261,7 @@ static void agent_plan(dm_t *d, const snap_t *s, char *body, char *resp) {
         { char r[24]; snprintf(r, sizeof r, "%d", round + 1); pthread_mutex_lock(&d->mu); set_status(d, S_THINKING, "THINKING, STEP %s", r); pthread_mutex_unlock(&d->mu); }
         int code = 0;
         for (int tries = 0; tries < 3; tries++) {          /* Gemini answers 503/429 under load: try again after a pause */
-            code = d->io->http_post(s->url, s->key, body, (size_t)bl, resp, 600000, 150);
+            code = llm_post(d->io, &s->L, body, (size_t)bl, resp, 600000, 150);
             if (code != 503 && code != 429 && code != 500) break;
             for (int w = 0; w < 30 * (tries + 1); w++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
         }
@@ -306,18 +343,22 @@ static void *worker(void *arg) {
         if (audio) wl = daemon_cap_wav(&d->cap, wav, 44 + DAEMON_CAP_MAX * 2);
         char key[128], url[300], ub[160]; snprintf(key, sizeof key, "%s", d->key); snprintf(ub, sizeof ub, "%s", d->url_base);
         snprintf(url, sizeof url, "%s/%s:generateContent", d->url_base, d->model);
+        llm_t L; llm_snap(d, &L);
         pthread_mutex_unlock(&d->mu);
 
         if (mode == 4) {                                   /* refresh the list of models the key can use */
-            char lu[220]; snprintf(lu, sizeof lu, "%s?pageSize=200", ub);   /* ub was copied under the mutex, which is released here */
-            char *mr = malloc(400000); char (*mn)[64] = malloc(40 * 64); int code = mr && mn ? d->io->http_post(lu, key, NULL, 0, mr, 400000, 20) : 0, nm = code == 200 ? models_parse(mr, mn, 40) : 0;
+            char lu[220], hdr[240]; snprintf(lu, sizeof lu, "%s?pageSize=200", ub);   /* ub was copied under the mutex, which is released here */
+            if (L.claude) { snprintf(lu, sizeof lu, "%s/models?limit=100", L.url); snprintf(hdr, sizeof hdr, "x-api-key: %s\nanthropic-version: 2023-06-01", L.key); }
+            char *mr = malloc(400000); char (*mn)[64] = malloc(40 * 64); int code = mr && mn ? d->io->http_post(lu, L.claude ? hdr : key, NULL, 0, mr, 400000, 20) : 0;
+            int nm = code != 200 ? 0 : L.claude ? claude_models(mr, mn, 40) : models_parse(mr, mn, 40);
             pthread_mutex_lock(&d->mu);
+            if (d->provider != L.claude) { free(mr); free(mn); continue; }   /* the provider changed meanwhile: that refresh is queued */
             if (nm > 0) { for (int i = 0; i < nm; i++) snprintf(d->models[i], 64, "%s", mn[i]); d->nmodels = nm; snprintf(d->models_msg, sizeof d->models_msg, "%d models available", nm); }
             else snprintf(d->models_msg, sizeof d->models_msg, code == 0 ? "could not reach the API" : code == 200 ? "no usable models in the reply" : "model list refused (HTTP %d)", code);
             free(mr); free(mn); d->rev++; continue;
         }
         if (mode == 2 || mode == 3) {
-            snap_t sn; memset(&sn, 0, sizeof sn);
+            snap_t sn; memset(&sn, 0, sizeof sn); sn.L = L;
             sn.channel = ch_snap; snprintf(sn.typed, sizeof sn.typed, "%s", typed); sn.audio = audio; sn.wl = wl; sn.wav = wav; sn.bpm = rq.bpm; snprintf(sn.scale, sizeof sn.scale, "%s", scale); sn.bars = rq.bars;
             snprintf(sn.key, sizeof sn.key, "%s", key); snprintf(sn.url, sizeof sn.url, "%s", url); snprintf(sn.host, sizeof sn.host, "%s", d->cmdr_host); sn.port = d->cmdr_port; snprintf(sn.host_remote, sizeof sn.host_remote, "%s", d->remote_host); sn.port_remote = d->remote_port; sn.has_remote = d->has_remote;
             if (mode == 2) agent_plan(d, &sn, body, resp); else agent_run(d, &sn);
@@ -326,7 +367,7 @@ static void *worker(void *arg) {
         }
         int code = 0, bl = daemon_build_request(&rq, typed, audio ? wav : NULL, audio ? (size_t)wl : 0, body, 1400000);
         for (int tries = 0; bl > 0 && tries < 3; tries++) {       /* Gemini answers 503/429 under load: try again after a pause */
-            code = d->io->http_post(url, key, body, (size_t)bl, resp, 600000, 60);
+            code = llm_post(d->io, &L, body, (size_t)bl, resp, 600000, 60);
             if (code != 503 && code != 429 && code != 500) break;
             for (int w = 0; w < 30 * (tries + 1); w++) { usleep(100000); pthread_mutex_lock(&d->mu); int q = d->quit; pthread_mutex_unlock(&d->mu); if (q) break; }
         }
@@ -353,7 +394,7 @@ static void *worker(void *arg) {
 
 static void request(dm_t *d, int with_audio) {       /* d->mu held */
     d->kb = 0;
-    if (!d->key[0]) { set_status(d, S_ERROR, "ERROR %s", "no api_key in daemon.conf"); return; }
+    if (!AKEY(d)[0]) { set_status(d, S_ERROR, "ERROR no %s in daemon.conf", AKEY_CONF(d)); return; }
     d->with_audio = with_audio; d->pending = 1; d->mode = d->agent ? 2 : 1; set_status(d, S_THINKING, "THINKING%s", ""); pthread_cond_signal(&d->cv);
 }
 
@@ -441,7 +482,7 @@ static void *create(const char *data_dir) {
     snprintf(d->status, sizeof d->status, "READY"); 
     d->midi = d->io->midi_open("Daemon", "MIDI Out");
     pthread_create(&d->th, NULL, worker, d); d->th_up = 1;
-    if (d->key[0] && !getenv("DAEMON_NO_MODEL_REFRESH")) { pthread_mutex_lock(&d->mu); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); pthread_mutex_unlock(&d->mu); }
+    if (AKEY(d)[0] && !getenv("DAEMON_NO_MODEL_REFRESH")) { pthread_mutex_lock(&d->mu); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); pthread_mutex_unlock(&d->mu); }
     kbd_cb cb = { kb_changed, kb_submit, kb_cancel, kb_found, d };
     d->kbd = kbd_start(d->input_dir, d->input_test, cb);
     { char lp[300]; snprintf(lp, sizeof lp, "%s/kbd.log", d->dir); remove(lp); kbd_set_log(d->kbd, lp); snprintf(lp, sizeof lp, "%s/agent.log", d->dir); remove(lp); }
@@ -506,7 +547,7 @@ static int save_mid(dm_t *d) {                         /* d->mu held */
 /* A momentary button reaches set_param with "on" more than once per press (seen on the Force: one TALK tap = LISTENING then the "heard nothing"
  * error, TYPE armed then disarmed). Ignore a repeat of the same button within 400 ms. */
 static int repeat_press(struct timespec *last, const char *k) {
-    static const char *const names[10] = { "talk", "typing", "run", "keys", "regen", "save", "model_prev", "model_next", "models_refresh", NULL };
+    static const char *const names[11] = { "talk", "typing", "run", "keys", "regen", "save", "model_prev", "model_next", "models_refresh", "provider_next", NULL };
     if (getenv("DAEMON_NO_DEBOUNCE")) return 0;   /* tests press the same button twice in a row */
     struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
     for (int i = 0; names[i]; i++) if (!strcmp(k, names[i])) {
@@ -578,17 +619,26 @@ static void set_param(void *inst, const char *k, const char *v) {
         if (save_mid(d) == 0) { set_status(d, d->state, "SAVED %s", d->part.clip_name); } else set_status(d, S_ERROR, "ERROR %s", "nothing to save");
     } else if ((!strcmp(k, "model_next") || !strcmp(k, "model_prev")) && on) {      /* choose another model: saved to daemon.conf, used from the next request */
         if (d->nmodels > 0) {
-            int cur = -1; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], d->model)) cur = i;
+            int cur = -1; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], AMODEL(d))) cur = i;
             int nx = cur < 0 ? 0 : (cur + (!strcmp(k, "model_next") ? 1 : d->nmodels - 1)) % d->nmodels;
-            snprintf(d->model, sizeof d->model, "%s", d->models[nx]);
-            if (conf_set(d->dir, "model", d->model) != 0) snprintf(d->models_msg, sizeof d->models_msg, "could not save daemon.conf");
+            snprintf(AMODEL(d), 64, "%s", d->models[nx]);
+            if (conf_set(d->dir, AMODEL_CONF(d), AMODEL(d)) != 0) snprintf(d->models_msg, sizeof d->models_msg, "could not save daemon.conf");
             else snprintf(d->models_msg, sizeof d->models_msg, "model saved to daemon.conf");
         } else snprintf(d->models_msg, sizeof d->models_msg, "no model list yet: press REFRESH");
         d->rev++;
     } else if (!strcmp(k, "models_refresh") && on) {
-        if (!d->key[0]) snprintf(d->models_msg, sizeof d->models_msg, "no api_key in daemon.conf");
+        if (!AKEY(d)[0]) snprintf(d->models_msg, sizeof d->models_msg, "no %s in daemon.conf", AKEY_CONF(d));
         else if (d->state == S_THINKING) snprintf(d->models_msg, sizeof d->models_msg, "busy: try again in a moment");
         else { snprintf(d->models_msg, sizeof d->models_msg, "asking the API..."); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); }
+        d->rev++;
+    } else if (!strcmp(k, "provider_next") && on) {    /* Gemini <-> Claude: saved to daemon.conf, the model list follows */
+        if (d->state == S_THINKING) snprintf(d->models_msg, sizeof d->models_msg, "busy: try again in a moment");
+        else {
+            d->provider = !d->provider; d->nmodels = 0;
+            if (conf_set(d->dir, "provider", d->provider ? "claude" : "gemini") != 0) snprintf(d->models_msg, sizeof d->models_msg, "could not save daemon.conf");
+            else if (!AKEY(d)[0]) snprintf(d->models_msg, sizeof d->models_msg, "no %s in daemon.conf", AKEY_CONF(d));
+            else if (!getenv("DAEMON_NO_MODEL_REFRESH")) { snprintf(d->models_msg, sizeof d->models_msg, "asking the API..."); d->pending = 1; d->mode = 4; pthread_cond_signal(&d->cv); }
+        }
         d->rev++;
     } else if (!strcmp(k, "prompt")) { snprintf(d->typed, sizeof d->typed, "%s", v); d->have_audio = d->have_audio && !d->typed[0]; if (d->typed[0]) request(d, 0); }
     else if (!strcmp(k, "type")) d->type = opt_index(TYPES, N(TYPES), v);
@@ -622,11 +672,12 @@ static int get_param(void *inst, const char *k, char *b, int n) {
     else if (!strcmp(k, "play")) r = snprintf(b, n, "%s", d->play ? "Play" : "Stop");
     else if (!strcmp(k, "kb")) r = snprintf(b, n, "%d", d->kb);
     else if (!strcmp(k, "addins")) { char t[200]; snprintf(t, sizeof t, "%s%s%s", d->has_cmdr && d->has_remote ? "add-ins OK" : !d->has_cmdr && !d->has_remote ? "add-ins MISSING (plugin and screen tools off)" : !d->has_cmdr ? "commander MISSING (plugin tools off)" : "remote MISSING (screen tools off)", "  |  ", d->has_tap ? "mic tap live" : "mic tap not heard"); r = put_text(b, n, t); }
-    else if (!strcmp(k, "keyinfo")) { size_t kl = strlen(d->key); char t[200];
-        if (!kl) snprintf(t, sizeof t, "NOT SET: put api_key=YOUR_KEY in engine/daemon.conf"); else snprintf(t, sizeof t, "set (ends %s, %zu chars): from engine/daemon.conf", d->key + (kl > 4 ? kl - 4 : 0), kl);
+    else if (!strcmp(k, "keyinfo")) { const char *ak = AKEY(d); size_t kl = strlen(ak); char t[200];
+        if (!kl) snprintf(t, sizeof t, "NOT SET: put %s=YOUR_KEY in engine/daemon.conf", AKEY_CONF(d)); else snprintf(t, sizeof t, "%s set (ends %s, %zu chars): from engine/daemon.conf", AKEY_CONF(d), ak + (kl > 4 ? kl - 4 : 0), kl);
         r = put_text(b, n, t); }
-    else if (!strcmp(k, "model")) { int cur = 0; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], d->model)) cur = i + 1;
-        char t[120]; if (cur) snprintf(t, sizeof t, "%s  (%d of %d)", d->model, cur, d->nmodels); else snprintf(t, sizeof t, "%s%s", d->model, d->nmodels ? "  (not in the list)" : ""); r = put_text(b, n, t); }
+    else if (!strcmp(k, "provider")) r = put_text(b, n, d->provider ? (d->key[0] ? "CLAUDE  (Anthropic; voice still goes to Gemini)" : "CLAUDE  (Anthropic; voice needs a Gemini api_key too)") : "GEMINI  (Google)");
+    else if (!strcmp(k, "model")) { const char *am = AMODEL(d); int cur = 0; for (int i = 0; i < d->nmodels; i++) if (!strcmp(d->models[i], am)) cur = i + 1;
+        char t[120]; if (cur) snprintf(t, sizeof t, "%s  (%d of %d)", am, cur, d->nmodels); else snprintf(t, sizeof t, "%s%s", am, d->nmodels ? "  (not in the list)" : ""); r = put_text(b, n, t); }
     else if (!strcmp(k, "models_info")) r = put_text(b, n, d->models_msg[0] ? d->models_msg : "press REFRESH to list the models your key can use");
     else if (!strcmp(k, "mic")) r = snprintf(b, n, "%s", d->has_tap ? "on" : "off");
     else if (!strcmp(k, "micinfo")) r = put_text(b, n, d->has_tap ? "detected: TALK is ready" : "not found: insert Daemon Listen on the audio track that carries the mic");

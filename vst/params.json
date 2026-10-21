@@ -470,6 +470,17 @@
    "poll": false
   },
   {
+   "key": "provider",
+   "name": "Provider",
+   "display": "string",
+   "poll": false
+  },
+  {
+   "key": "provider_next",
+   "name": "Switch provider",
+   "momentary": true
+  },
+  {
    "key": "model",
    "name": "Model",
    "display": "string",

@@ -4,6 +4,8 @@
 #include "engine.h"
 #include "io_fake.h"
 #include "../src/daemon_tap.h"
+#include "../src/daemon_core.h"
+#include "../src/daemon_json.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -343,8 +345,39 @@ int main(void) {
       CHECK(strstr(get(m, "models_info"), "HTTP 503") && !strcmp(get(m, "model") + 0, get(m, "model")), "a failed refresh says so: '%s'", get(m, "models_info"));
       E->destroy(m); }
 
+    /* Claude as the provider: its own key, model list and Messages API; the reply comes back as a part; voice falls back to Gemini */
+    { char cd[] = "/tmp/daemon_cl_XXXXXX"; if (!mkdtemp(cd)) return 1;
+      char cp[340]; snprintf(cp, sizeof cp, "%s/daemon.conf", cd); FILE *cf = fopen(cp, "w"); fputs("provider=claude\nclaude_key=sk-ant-test-WXYZ\nclaude_url=http://c/v1\nclips_dir=/tmp\n", cf); fclose(cf);
+      void *m = E->create(cd);
+      CHECK(strstr(get(m, "provider"), "CLAUDE") && strstr(get(m, "keyinfo"), "claude_key set (ends WXYZ") && !strstr(get(m, "keyinfo"), "sk-ant"), "claude key shown masked: '%s'", get(m, "keyinfo"));
+      CHECK(!strncmp(get(m, "model"), "claude-sonnet-5-5", 17), "default Claude model: '%s'", get(m, "model"));
+      fake.code = 200; fake.nq = 0; snprintf(fake.resp, sizeof fake.resp, "{\"data\":[{\"id\":\"claude-a-1\"},{\"id\":\"claude-b-2\"}]}");
+      int p1 = fake.posts; E->set_param(m, "models_refresh", "1");
+      for (int i = 0; i < 300 && !strstr(get(m, "models_info"), "models available"); i++) usleep(10000);
+      CHECK(fake.posts == p1 + 1 && !strcmp(fake.url, "http://c/v1/models?limit=100") && strstr(fake.key, "x-api-key: sk-ant-test-WXYZ\nanthropic-version: "), "Claude model list GET: %s", fake.url);
+      CHECK(!strcmp(get(m, "models_info"), "2 models available"), "claude models: '%s'", get(m, "models_info"));
+      E->set_param(m, "model_next", "1"); CHECK(!strncmp(get(m, "model"), "claude-a-1  (1 of 2)", 20), "next Claude model: '%s'", get(m, "model"));
+      { char cc[2000] = ""; FILE *cf3 = fopen(cp, "r"); size_t nn = fread(cc, 1, sizeof cc - 1, cf3); cc[nn] = 0; fclose(cf3);
+        CHECK(strstr(cc, "claude_model=claude-a-1\n") && !strstr(cc, "\nmodel="), "Claude model saved as claude_model: %s", cc); }
+      char inner[4000], q[9000]; daemon_extract_text(OK_REPLY, inner, sizeof inner);
+      { char fenced[4100]; snprintf(fenced, sizeof fenced, "```json\n%s\n```", inner); jv sv = { 's', 0, fenced, NULL, NULL, NULL }; char js[8000]; djson_write(&sv, js, sizeof js);
+        snprintf(q, sizeof q, "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":%s}],\"stop_reason\":\"end_turn\"}", js); }
+      snprintf(fake.resp, sizeof fake.resp, "%s", q);
+      p1 = fake.posts; E->set_param(m, "prompt", "a dark bassline"); wait_not_thinking(m);
+      CHECK(fake.posts == p1 + 1 && !strcmp(fake.url, "http://c/v1/messages") && strstr(fake.body, "\"model\":\"claude-a-1\"") && strstr(fake.body, "\"system\":") && strstr(fake.body, "JSON Schema") && strstr(fake.body, "\\\"type\\\":\\\"object\\\"") && !strstr(fake.body, "generationConfig"), "Messages API body: %.200s", fake.body);
+      CHECK(!strncmp(get(m, "status"), "DONE", 4) || strstr(get(m, "reply"), "Dark and slow"), "Claude part used: '%s' / '%s'", get(m, "status"), get(m, "reply"));
+      fake.code = 529; snprintf(fake.resp, sizeof fake.resp, "{\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"); p1 = fake.posts; E->set_param(m, "prompt", "again");
+      for (int i = 0; i < 2500 && !strncmp(get(m, "status"), "THINKING", 8); i++) usleep(10000);   /* three tries, 3 s and 6 s apart */
+      CHECK(fake.posts > p1 + 1 && !strncmp(get(m, "status"), "ERROR 503 Overloaded", 20), "overloaded is retried like 503: %d posts, '%s'", fake.posts - p1, get(m, "status"));
+      fake.code = 200;
+      E->set_param(m, "provider_next", "1");
+      CHECK(strstr(get(m, "provider"), "GEMINI") && strstr(get(m, "models_info"), "no api_key"), "switched to Gemini without a key: '%s'", get(m, "models_info"));
+      { char cc[2000] = ""; FILE *cf3 = fopen(cp, "r"); size_t nn = fread(cc, 1, sizeof cc - 1, cf3); cc[nn] = 0; fclose(cf3);
+        CHECK(strstr(cc, "provider=gemini\n") && strstr(cc, "claude_key=sk-ant-test-WXYZ\n"), "provider saved: %s", cc); }
+      E->destroy(m); }
+
     E->destroy(a);
-    CHECK(fake.closed == 12, "MIDI port closed once per instance: %d", fake.closed);
+    CHECK(fake.closed == 13, "MIDI port closed once per instance: %d", fake.closed);
     printf(fails ? "FAILED (%d)\n" : "PASSED\n", fails);
     return fails != 0;
 }

@@ -7,8 +7,8 @@ Generative sequencers give you dice to roll. Daemon gives you a collaborator who
 on track 4 with a delay and a reverb" becomes a MIDI part in your key, a clip in your clip matrix, and AIR Reverb and AIR Delay in the
 track's inserts. All of it is planned in front of you, and none of it runs until you press **RUN**.
 
-Daemon is a native instrument plugin that runs inside MPC OS standalone, with no computer attached. It uses Google Gemini for its
-musical and visual understanding, so the device needs a network connection and a Gemini API key.
+Daemon is a native instrument plugin that runs inside MPC OS standalone, with no computer attached. It uses Google Gemini or Anthropic Claude
+(your choice, on the SETTINGS tab) for its musical and visual understanding, so the device needs a network connection and an API key.
 
 > First public release. Developed and verified on an Akai Force with MPC OS 3.9.1. Other MPC OS standalone devices should run
 > it. The screen automations (see [Agent mode](#agent-mode)) are recorded per device; a set for the Force ships with it.
@@ -92,23 +92,24 @@ Your words win over the menus. "In E phrygian" or "16 bars" overrides KEY, SCALE
 ### SETTINGS tab
 | | |
 |---|---|
-| **GEMINI API KEY** | whether a key is set, showing only its last four characters. The key lives in `engine/daemon.conf` |
-| **MODEL** | the Gemini model Daemon uses, and its place in the list |
+| **AI PROVIDER** / **[SWITCH]** | Gemini (Google) or Claude (Anthropic). Saved straight away; the model list follows. Claude does not take audio, so with Claude a spoken request still goes to Gemini (TALK needs `api_key` too) |
+| **API KEY** | whether the active provider's key is set, showing only its last four characters. Keys live in `engine/daemon.conf` |
+| **MODEL** | the model Daemon uses with that provider, and its place in the list |
 | **[< PREV] / [NEXT >]** | choose another model. Saved straight away, used from the next request, no reload needed |
-| **[REFRESH LIST]** | asks Google which models your key may use (text models only; image, speech and transcription models are left out) |
+| **[REFRESH LIST]** | asks the provider which models your key may use (for Gemini, text models only; image, speech and transcription models are left out) |
 | **ADD-INS** | the state of the commander and remote add-ins |
 | **DAEMON LISTEN** | whether the voice-input effect is found |
 
-**Q-Links** on this tab: PREV, NEXT, REFRESH.
+**Q-Links** on this tab: SWITCH, PREV, NEXT, REFRESH.
 
-If a request fails with "quota exceeded" or "high demand", step to another model here. Daemon already retries busy answers
+If a request fails with "quota exceeded", "high demand" or "overloaded", step to another model or switch provider here. Daemon already retries busy answers
 three times on its own.
 
 ---
 
 ## Requirements
 - An Akai MPC OS standalone device (Force, MPC Live / One / X / Key). armv7 builds for Gen 1 devices and the Force, aarch64 for Gen 2.
-- Network access and a **Gemini API key** (free keys work, with daily limits).
+- Network access and a **Gemini API key** (free keys work, with daily limits) or an **Anthropic API key** for Claude (voice input still needs the Gemini key).
 - For **Agent mode**, two add-ins on the device:
   - **mpc-addin-commander** (port 6730): reads the project, plugins and parameters, sets parameters and transport.
   - **mpc-addin-remote** (port 6720): screen, touch and buttons, used to add tracks, load plugins and presets, and import clips.
@@ -122,6 +123,9 @@ three times on its own.
    ```
    api_key=YOUR_GEMINI_KEY
    model=gemini-3-flash-preview     # optional: any model from the SETTINGS tab
+   claude_key=YOUR_ANTHROPIC_KEY    # optional: to use Claude
+   provider=claude                  # optional: gemini (the default) or claude; also set on the SETTINGS tab
+   claude_model=claude-sonnet-5-5   # optional: any Claude model from the SETTINGS tab
    clips_dir=Daemon                 # optional: where SAVE writes, a folder at the top of the drive
    ```
    Daemon never shows or logs the key.
@@ -148,9 +152,10 @@ three times on its own.
 ## Troubleshooting
 | Message | What to do |
 |---|---|
-| ERROR no api_key | add `api_key=` to `engine/daemon.conf` |
+| ERROR no api_key / no claude_key | add the key for the chosen provider to `engine/daemon.conf` |
 | ERROR no mic | insert Daemon Listen on the mic's audio track |
-| ERROR 429 / 503 | quota used up or Google busy: pick another model on the SETTINGS tab |
+| ERROR 429 / 503 | quota used up or the provider busy: pick another model or switch provider on the SETTINGS tab |
+| voice needs api_key (Gemini) | with Claude, TALK still uses Gemini to hear you: add `api_key=` too, or type |
 | stopped in *macro* at step *n* | the screen was not where the automation expected (another page open, a dialog, a different MPC OS version). Close dialogs, try again, or see `docs/MACROS.md` |
 | the agent doesn't know a new track | save the project, then ask again |
 | letters missing at the start of a typed prompt | wait for "TYPING: Enter sends" before typing |
@@ -169,6 +174,7 @@ Logs for the curious: `engine/daemon.log` (state, MIDI, transport; rewritten twi
 ## For developers
 Daemon is built on the shared VST2 wrapper from [mpc-vst-plugins](https://github.com/sd88me/mpc-vst-plugins).
 - `src/daemon_engine.c`: the engine (buttons, state, worker thread). `daemon_core.c`: part requests, reply parsing, MIDI file, mic capture.
+- `src/daemon_claude.c`: Claude behind the Gemini wire format (requests and replies translated).
 - `src/daemon_agent.c`: the function-calling agent and its tools. `daemon_cmdr.c`: the commander client.
 - `src/daemon_macro.c`, `daemon_fp.c`, `daemon_mcp.c`: screen automations, screen fingerprints, the remote add-in client.
 - `listen/`, `src/daemon_tap_engine.c`: the Daemon Listen effect. `vst/`: parameters, layout and skin.
